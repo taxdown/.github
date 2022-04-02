@@ -24,7 +24,7 @@ jobs:
           registry-url: https://registry.npmjs.org
           scope: '@taxdown'
 
-      - name: Installing clean NPM dependencies
+      - name: Installing NPM dependencies
         run: npm install
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
