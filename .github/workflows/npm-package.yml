@@ -24,8 +24,8 @@ jobs:
           registry-url: https://registry.npmjs.org
           scope: '@taxdown'
 
-      - name: Installing NPM dependencies
-        run: npm install
+      - name: Installing clean NPM dependencies
+        run: npm ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -57,8 +57,9 @@ jobs:
           scope: '@taxdown'
 
       - name: Installing NPM dependencies on production mode
-        run: npm install --production
+        run: npm ci
         env:
+          NODE_ENV: production
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Run build application
