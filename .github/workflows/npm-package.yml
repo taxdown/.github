@@ -1,7 +1,10 @@
 name: Handle npm package CI from shared workflow npm-package
 
 on:
-  workflow_call
+  workflow_call:
+    secrets:
+      NPM_TOKEN:
+        required: true
 
 jobs:
   build:
