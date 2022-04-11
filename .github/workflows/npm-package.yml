@@ -62,11 +62,8 @@ jobs:
       - name: Installing NPM dependencies on production mode
         run: npm ci --ignore-scripts
         env:
-          NODE_ENV: production
+          # NODE_ENV: production # disabled until we figure out a way of making the build deps (esbuild, glob, typescript, etc.) to load
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Install esbuild as global dependency
-        run: npm i -g esbuild
 
       - name: Run build application
         run: npm run build
