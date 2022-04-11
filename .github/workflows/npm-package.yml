@@ -69,7 +69,13 @@ jobs:
         run: npm run build
 
       - name: Publish NPM package
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ !contains(github.ref, 'beta') }}
         run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish beta NPM package
+        if: ${{ contains(github.ref, 'beta') }}
+        run: npm publish --tag beta
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
