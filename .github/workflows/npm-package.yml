@@ -65,6 +65,9 @@ jobs:
           NODE_ENV: production
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Install esbuild as global dependency
+        run: npm i -g esbuild
+
       - name: Run build application
         run: npm run build
 
