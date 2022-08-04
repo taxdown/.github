@@ -36,6 +36,9 @@ jobs:
       - name: Run build application
         run: npm run build
 
+      - name: Run linter
+        run: npm run lint
+
       - name: Run tests
         run: npm run test
   deploy:
