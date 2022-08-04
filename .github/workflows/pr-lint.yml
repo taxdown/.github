@@ -1,13 +1,9 @@
 name: Ensure PR is compliant with taxdown's guidelines ✅
 
-on:
-  workflow_call:
-    secrets:
-      GITHUB_TOKEN:
-        required: true
+on: workflow_call
 
 jobs:
-  main:
+  validate:
     name: Validate PR title
     runs-on: ubuntu-latest
     steps:
