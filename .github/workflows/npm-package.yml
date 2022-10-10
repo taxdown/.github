@@ -2,6 +2,12 @@ name: Handle npm package CI from shared workflow npm-package
 
 on:
   workflow_call:
+    inputs:
+      node-version:
+        description: 'Node version for compiling'
+        default: '12' # for backwards compatibility, remove and require version when all workflows updated
+        required: false
+        type: string
     secrets:
       NPM_TOKEN:
         required: true
@@ -24,7 +30,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           # cache: 'npm' this caches only the global cache directory, so we need to use cache action to cache node_modules
-          node-version: '12'
+          node-version: ${{ inputs.node-version }}
           registry-url: https://registry.npmjs.org
           scope: '@taxdown'
 
@@ -59,7 +65,7 @@ jobs:
       - name: Set NPM registry
         uses: actions/setup-node@v3
         with:
-          node-version: '12'
+          node-version: ${{ inputs.node-version }}
           registry-url: https://registry.npmjs.org
           scope: '@taxdown'
 
