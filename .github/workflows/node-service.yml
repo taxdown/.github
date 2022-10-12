@@ -63,7 +63,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: '${{ inputs.service }}/node_modules'
-          key: ${{ runner.os }}-node-${{ hashFiles('inputs.service/package-lock.json') }}
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
