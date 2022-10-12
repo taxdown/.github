@@ -1,0 +1,108 @@
+name: Handle node service build and deploy on monorepo CI from shared workflow
+
+on:
+  workflow_call:
+    inputs:
+      aws-region:
+        description: 'AWS region for building and deploy'
+        required: true
+        type: string
+      node-version:
+        description: 'Node version for compiling'
+        required: true
+        type: string
+      service:
+        description: 'Service of the monorepo'
+        required: true
+        type: string
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      NPM_TOKEN:
+        required: true
+      SENTRY_AUTH_TOKEN:
+        required: true
+      SERVERLESS_CI_SECRET_ACCESS_KEY:
+        required: true
+
+jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-environments.outputs.matrix }}
+    steps:
+      - id: set-environments
+        run: |
+          if [[ "$GITHUB_REF" == refs/heads/master ]] ; then
+              echo ::set-output name=matrix::[\"dev\",\"staging\"]
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]] ; then
+              echo ::set-output name=matrix::[\"prod\"]
+          else
+              echo ::set-output name=matrix::[\"staging\"]
+          fi
+  build:
+    name: Build node service and run tests 🔨
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ matrix.current-environment }}
+    env:
+      NODE_OPTIONS: --max_old_space_size=7168
+      STAGE: ${{ matrix.current-environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        current-environment: ${{fromJson(needs.prepare-matrix.outputs.matrix)}}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v2
+
+      - name: Restore cache
+        uses: actions/cache@v2
+        with:
+          path: '${{ inputs.service }}/node_modules'
+          key: ${{ runner.os }}-node-${{ hashFiles('${{ inputs.service }}/package-lock.json') }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Set NPM registry
+        uses: actions/setup-node@v3
+        with:
+          # cache: 'npm' this caches only the global cache directory, so we need to use cache action to cache node_modules
+          node-version: ${{ inputs.node-version }}
+          registry-url: https://registry.npmjs.org
+          scope: '@taxdown'
+
+      - name: Installing NPM dependencies
+        run: cd '${{ inputs.service }}' && npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Run build application
+        run: cd '${{ inputs.service }}' && npm run build
+        timeout-minutes: 300
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_CI_SECRET_ACCESS_KEY }}
+
+      - name: Run linter
+        run: cd '${{ inputs.service }}' && npm run lint
+
+      - name: Run tests
+        run: cd '${{ inputs.service }}' && npm run test
+        env:
+          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_CI_SECRET_ACCESS_KEY }}
+
+      - name: Deploy the server 🚀
+        if: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/master' }}
+        run: cd '${{ inputs.service }}' && npm run deploy
+        env:
+          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_CI_SECRET_ACCESS_KEY }}
