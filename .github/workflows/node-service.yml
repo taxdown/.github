@@ -57,10 +57,10 @@ jobs:
         current-environment: ${{fromJson(needs.prepare-matrix.outputs.matrix)}}
     steps:
       - name: Check out source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Restore cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: '${{ inputs.service }}/node_modules'
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
