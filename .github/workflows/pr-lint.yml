@@ -9,7 +9,7 @@ jobs:
     steps:
       # Version is locked down since we are sharing GITHUB_TOKEN, which is a secret
       # before changing this action's version, ensure no malicious code is executed
-      - uses: natterstefan/action-semantic-pull-request@c02c90d401cecdb4cd60e04037da65529c6a6c5c
+      - uses: amannn/action-semantic-pull-request@v5.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
