@@ -23,6 +23,7 @@ jobs:
             style
             test
           scopes: |
+            master
             core
             deps
             ui
