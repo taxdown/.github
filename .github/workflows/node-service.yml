@@ -39,6 +39,8 @@ jobs:
               echo ::set-output name=matrix::[\"dev\",\"staging\"]
           elif [[ "$GITHUB_REF" == refs/tags/v* ]] ; then
               echo ::set-output name=matrix::[\"prod\"]
+          elif [[ "$GITHUB_REF" == refs/tags/${{ inputs.service}}-v* ]] ; then
+              echo ::set-output name=matrix::[\"prod\"]
           else
               echo ::set-output name=matrix::[\"staging\"]
           fi
