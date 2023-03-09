@@ -32,6 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-environments.outputs.matrix }}
+      should_release: ${{ steps.set-environments.outputs.should_release }}
     steps:
       - id: set-environments
         run: |
