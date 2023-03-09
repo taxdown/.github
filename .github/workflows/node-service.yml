@@ -36,17 +36,17 @@ jobs:
       - id: set-environments
         run: |
           if [[ "$GITHUB_REF" == refs/heads/master ]] ; then
-              echo "matrix=[\"dev\",\"staging\"]" >>$GITHUB_OUTPUT
-              echo "release=true" >>$GITHUB_OUTPUT
+              echo "matrix=[\"dev\",\"staging\"]" >> $GITHUB_OUTPUT
+              echo "release=true" >> $GITHUB_OUTPUT
           elif [[ "$GITHUB_REF" == refs/tags/v* ]] ; then
-              echo "matrix=[\"prod\"]" >>$GITHUB_OUTPUT
-              echo "release=true" >>$GITHUB_OUTPUT
+              echo "matrix=[\"prod\"]" >> $GITHUB_OUTPUT
+              echo "release=true" >> $GITHUB_OUTPUT
           elif [[ "$GITHUB_REF" == refs/tags/${{inputs.service}}-v* ]] ; then
-              echo "matrix=[\"prod\"]" >>$GITHUB_OUTPUT
-              echo "release=true" >>$GITHUB_OUTPUT
+              echo "matrix=[\"prod\"]" >> $GITHUB_OUTPUT
+              echo "release=true" >> $GITHUB_OUTPUT
           else
-              echo ::set-output name=matrix::[\"staging\"]
-              echo "release=false" >>$GITHUB_OUTPUT
+              echo "matrix=[\"staging\"]" >> $GITHUB_OUTPUT
+              echo "release=false" >> $GITHUB_OUTPUT
           fi
   build:
     name: Build node service and run tests 🔨
