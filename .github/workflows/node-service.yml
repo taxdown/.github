@@ -108,7 +108,7 @@ jobs:
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_CI_SECRET_ACCESS_KEY }}
 
       - name: Deploy the server 🚀
-        if: ${{ needs.prepare-matrix.outputs.release == 'true }}
+        if: ${{ needs.prepare-matrix.outputs.release == 'true' }}
         run: cd '${{ inputs.service }}' && npm run deploy
         env:
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_CI_SECRET_ACCESS_KEY }}
