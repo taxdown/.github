@@ -104,7 +104,7 @@ jobs:
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_CI_SECRET_ACCESS_KEY }}
 
       - name: Deploy the server 🚀
-        if: ${{ startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/${{inputs.service}}-v') || github.ref == 'refs/heads/master' }}
+        if: ${{ startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/github.event.inputs.service-v') || github.ref == 'refs/heads/master' }}
         run: cd '${{ inputs.service }}' && npm run deploy
         env:
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_CI_SECRET_ACCESS_KEY }}
