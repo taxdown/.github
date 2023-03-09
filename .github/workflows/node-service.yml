@@ -37,16 +37,16 @@ jobs:
         run: |
           if [[ "$GITHUB_REF" == refs/heads/master ]] ; then
               echo "matrix=[\"dev\",\"staging\"]" >> $GITHUB_OUTPUT
-              echo "release=true" >> $GITHUB_OUTPUT
+              echo "should_release=true" >> $GITHUB_OUTPUT
           elif [[ "$GITHUB_REF" == refs/tags/v* ]] ; then
               echo "matrix=[\"prod\"]" >> $GITHUB_OUTPUT
-              echo "release=true" >> $GITHUB_OUTPUT
+              echo "should_release=true" >> $GITHUB_OUTPUT
           elif [[ "$GITHUB_REF" == refs/tags/${{inputs.service}}-v* ]] ; then
               echo "matrix=[\"prod\"]" >> $GITHUB_OUTPUT
-              echo "release=true" >> $GITHUB_OUTPUT
+              echo "should_release=true" >> $GITHUB_OUTPUT
           else
               echo "matrix=[\"staging\"]" >> $GITHUB_OUTPUT
-              echo "release=false" >> $GITHUB_OUTPUT
+              echo "should_release=false" >> $GITHUB_OUTPUT
           fi
   build:
     name: Build node service and run tests 🔨
@@ -108,7 +108,7 @@ jobs:
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_CI_SECRET_ACCESS_KEY }}
 
       - name: Deploy the server 🚀
-        if: ${{ needs.prepare-matrix.outputs.release == 'true' }}
+        if: ${{ needs.prepare-matrix.outputs.should_release == 'true' }}
         run: cd '${{ inputs.service }}' && npm run deploy
         env:
           SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_CI_SECRET_ACCESS_KEY }}
