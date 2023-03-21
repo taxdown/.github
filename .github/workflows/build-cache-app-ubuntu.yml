@@ -1,4 +1,4 @@
-name: Build cache from main branch to make it available to every other workflow
+name: Build ubuntu cache from main branch to make it available to every other workflow
 # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#use-cache-across-feature-branches
 # https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#restrictions-for-accessing-a-cache
 
