@@ -17,6 +17,7 @@ on:
       NPM_TOKEN:
         required: true
 
+jobs:
   build-cache:
     runs-on: macos-latest
     steps:
