@@ -1,0 +1,45 @@
+name: Build cache from main branch to make it available to every other workflow
+# https://github.com/actions/cache/blob/main/tips-and-workarounds.md#use-cache-across-feature-branches
+# https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#restrictions-for-accessing-a-cache
+
+on:
+  workflow_call:
+    secrets:
+      NPM_TOKEN:
+        required: true
+
+jobs:
+  build-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v3
+
+      - name: Set up Ruby and install Gems with cache
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 2.6
+          bundler-cache: true
+
+      - name: Set NPM registry
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+          registry-url: https://registry.npmjs.org
+          scope: '@taxdown'
+          cache: 'yarn'
+
+      - name: Install NPM dependencies
+        run: yarn install --frozen-lockfile --network-timeout 600000
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Set up Java version for sdkmanager
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+          cache: 'gradle'
+
+      - name: Install Gradle dependencies
+        run: bundle exec fastlane android install_dependencies

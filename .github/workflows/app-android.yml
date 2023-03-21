@@ -1,0 +1,153 @@
+name: Android workflow for build and deploy 🤖
+
+on:
+  workflow_call:
+    secrets:
+      ANDROID_KEY_ALIAS:
+        required: true
+      ANDROID_KEY_PASSWORD:
+        required: true
+      ANDROID_KEYSTORE_BASE64:
+        required: true
+      ANDROID_KEYSTORE_PASSWORD:
+        required: true
+      ANDROID_SERVICE_KEY_BASE64:
+        required: true
+      FIREBASE_TOKEN:
+        required: true
+      NPM_TOKEN:
+        required: true
+
+jobs:
+  prepare-environment:
+    runs-on: ubuntu-latest
+    name: Prepares the env vars for the stage and if it should be deployed
+    outputs:
+      environment: ${{ steps.set-environment.outputs.environment }}
+      should_deploy: ${{ steps.set-environment.outputs.should_deploy }}
+    steps:
+      - id: set-environment
+        name: Set environment
+        run: |
+          if [[ $GITHUB_REF == *"release/dev"* ]] ; then
+              echo "environment=dev" >> $GITHUB_OUTPUT
+              echo "should_deploy=true" >> $GITHUB_OUTPUT
+          elif [[ $GITHUB_REF == *"release/staging"* ]] ; then
+              echo "environment=staging" >> $GITHUB_OUTPUT
+              echo "should_deploy=true" >> $GITHUB_OUTPUT
+          elif [[ $GITHUB_REF == *"release/prod"* ]] ; then
+              echo "environment=prod" >> $GITHUB_OUTPUT
+              echo "should_deploy=true" >> $GITHUB_OUTPUT
+          fi
+
+  build-android:
+    runs-on: ubuntu-latest
+    name: Build the android bundle and upload artifact, run tests, lint 🔨
+    needs: prepare-environment
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v3
+
+      - name: Set NPM registry
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+          registry-url: https://registry.npmjs.org
+          scope: '@taxdown'
+          cache: 'yarn'
+
+      - name: Install NPM dependencies
+        run: yarn install --frozen-lockfile --network-timeout 600000
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Running linter
+        run: yarn run lint
+
+      - name: Running tests
+        run: yarn test
+
+      - name: Build Android
+        run: yarn run build:android
+
+      - name: Archive android bundle
+        uses: actions/upload-artifact@v3
+        with:
+          name: bundle-android
+          path: |
+            android/index.android.bundle
+            android/app/build/bundle/index.android.bundle.map
+            android/app/build/bundle/
+
+  deployment-android:
+    runs-on: ubuntu-latest
+    name: Build 🔨 the android apk/aab and deploy 🚀 when the branch is one of the environments
+    needs: [prepare-environment, build-android]
+    if: ${{ needs.prepare-environment.outputs.should_deploy == 'true' }}
+    environment:
+      name: ${{ needs.prepare-environment.outputs.environment }}
+    env:
+      STAGE: ${{ needs.prepare-environment.outputs.environment }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v3
+
+      - name: Set up Ruby and install Gems with cache
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 2.6
+          bundler-cache: true
+
+      - name: Set NPM registry
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+          registry-url: https://registry.npmjs.org
+          scope: '@taxdown'
+          cache: 'yarn'
+
+      - name: Install NPM dependencies
+        run: yarn install --frozen-lockfile --network-timeout 600000
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Set up Java version for sdkmanager
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+          cache: 'gradle'
+
+      - name: Set up Android Release keystore and Google Cloud service key for Play Console
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_SERVICE_KEY_BASE64: ${{ secrets.ANDROID_SERVICE_KEY_BASE64 }}
+        run: |
+          mkdir -p ${{ github.workspace }}/.github/android
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -di > ${{ github.workspace }}/.github/android/android-release.keystore
+          echo "$ANDROID_SERVICE_KEY_BASE64" | base64 -di > ${{ github.workspace }}/.github/android/android-service-key.json
+
+      - name: Download built android bundle
+        uses: actions/download-artifact@v3
+        with:
+          name: bundle-android
+
+      - name: Running android fastlane build
+        run: bundle exec fastlane android build stage:$STAGE
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Archive aab (prod) or apk(dev, staging) artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: artifact-android
+          path: |
+            android/app/build/**/*.aab
+            android/app/build/**/*.apk
+
+      - name: Running android fastlane distribution
+        run: bundle exec fastlane android distribution stage:$STAGE
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
