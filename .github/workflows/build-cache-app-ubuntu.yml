@@ -4,6 +4,19 @@ name: Build cache from main branch to make it available to every other workflow
 
 on:
   workflow_call:
+    inputs:
+      java-version:
+        description: 'Ruby version for compiling'
+        required: true
+        type: string
+      node-version:
+        description: 'Ruby version for compiling'
+        required: true
+        type: string
+      ruby-version:
+        description: 'Ruby version for compiling'
+        required: true
+        type: string
     secrets:
       NPM_TOKEN:
         required: true
@@ -18,13 +31,13 @@ jobs:
       - name: Set up Ruby and install Gems with cache
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: 2.6
+          ruby-version: ${{ inputs.ruby-version }}
           bundler-cache: true
 
       - name: Set NPM registry
         uses: actions/setup-node@v3
         with:
-          node-version: '16'
+          node-version: ${{ inputs.node-version }}
           registry-url: https://registry.npmjs.org
           scope: '@taxdown'
           cache: 'yarn'
@@ -38,7 +51,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
-          java-version: '11'
+          java-version: ${{ inputs.java-version }}
           cache: 'gradle'
 
       - name: Install Gradle dependencies
