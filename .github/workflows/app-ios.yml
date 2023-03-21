@@ -1,12 +1,8 @@
-name: Android workflow for build and deploy 🤖
+name: iOs workflow for build and deploy 🤖
 
 on:
   workflow_call:
     inputs:
-      java-version:
-        description: 'Java version for compiling'
-        required: true
-        type: string
       node-version:
         description: 'Node version for compiling'
         required: true
@@ -16,17 +12,17 @@ on:
         required: true
         type: string
     secrets:
-      ANDROID_KEY_ALIAS:
+      APP_STORE_API_KEY:
         required: true
-      ANDROID_KEY_PASSWORD:
+      APP_STORE_API_KEY_ID:
         required: true
-      ANDROID_KEYSTORE_BASE64:
+      FASTLANE_PASSWORD:
         required: true
-      ANDROID_KEYSTORE_PASSWORD:
-        required: true
-      ANDROID_SERVICE_KEY_BASE64:
+      FASTLANE_USER:
         required: true
       FIREBASE_TOKEN:
+        required: true
+      MATCH_PASSWORD:
         required: true
       NPM_TOKEN:
         required: true
@@ -42,20 +38,20 @@ jobs:
       - id: set-environment
         name: Set environment
         run: |
-          if [[ $GITHUB_REF == *"release/dev"* ]] ; then
+          if [[ $GITHUB_REF == *"release/development"* ]] ; then
               echo "environment=dev" >> $GITHUB_OUTPUT
               echo "should_deploy=true" >> $GITHUB_OUTPUT
           elif [[ $GITHUB_REF == *"release/staging"* ]] ; then
               echo "environment=staging" >> $GITHUB_OUTPUT
               echo "should_deploy=true" >> $GITHUB_OUTPUT
-          elif [[ $GITHUB_REF == *"release/prod"* ]] ; then
+          elif [[ $GITHUB_REF == *"release/production"* ]] ; then
               echo "environment=prod" >> $GITHUB_OUTPUT
               echo "should_deploy=true" >> $GITHUB_OUTPUT
           fi
 
-  build-android:
+  build-ios:
     runs-on: ubuntu-latest
-    name: Build the android bundle and upload artifact, run tests, lint 🔨
+    name: Build the iOs bundle and upload artifact, run tests, lint 🔨
     needs: prepare-environment
     steps:
       - name: Check out source code
@@ -80,28 +76,34 @@ jobs:
       - name: Running tests
         run: yarn test
 
-      - name: Build Android
-        run: yarn run build:android
+      - name: Build iOs bundle
+        run: yarn run build:ios
 
-      - name: Archive android bundle
+      - name: Archive iOs bundle
         uses: actions/upload-artifact@v3
         with:
-          name: bundle-android
+          name: bundle-ios
           path: |
-            android/index.android.bundle
-            android/app/build/bundle/index.android.bundle.map
-            android/app/build/bundle/
+            ios/main.jsbundle
+            ios/build/bundle/main.jsbundle.map
+            ios/build/bundle/
 
-  deployment-android:
-    runs-on: ubuntu-latest
-    name: Build 🔨 the android apk/aab and deploy 🚀 when the branch is one of the environments
-    needs: [prepare-environment, build-android]
+  deployment-ios:
+    runs-on: macos-latest
+    name: Build 🔨 the iOs ipa and deploy 🚀 when the branch is one of the environments
+    needs: [prepare-environment, build-ios]
     if: ${{ needs.prepare-environment.outputs.should_deploy == 'true' }}
     environment:
       name: ${{ needs.prepare-environment.outputs.environment }}
     env:
       STAGE: ${{ needs.prepare-environment.outputs.environment }}
+      ITMSTRANSPORTER_FORCE_ITMS_PACKAGE_UPLOAD: true
     steps:
+      - name: Set up ssh key for GitHub certificates repository access
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+
       - name: Check out source code
         uses: actions/checkout@v3
 
@@ -124,43 +126,51 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Set up Java version for sdkmanager
-        uses: actions/setup-java@v3
+      - name: Cache Pods
+        uses: actions/cache@v3
         with:
-          distribution: 'temurin'
-          java-version: ${{ inputs.java-version }}
-          cache: 'gradle'
+          path: ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
 
-      - name: Set up Android Release keystore and Google Cloud service key for Play Console
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_SERVICE_KEY_BASE64: ${{ secrets.ANDROID_SERVICE_KEY_BASE64 }}
-        run: |
-          mkdir -p ${{ github.workspace }}/.github/android
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -di > ${{ github.workspace }}/.github/android/android-release.keystore
-          echo "$ANDROID_SERVICE_KEY_BASE64" | base64 -di > ${{ github.workspace }}/.github/android/android-service-key.json
+      - name: Install Pods
+        run: yarn run ios:install
 
-      - name: Download built android bundle
+      - name: Download built ios bundle
         uses: actions/download-artifact@v3
         with:
-          name: bundle-android
+          name: bundle-ios
+          path: ios
 
-      - name: Running android fastlane build
-        run: bundle exec fastlane android build stage:$STAGE
+      - name: Running ios fastlane build
+        id: fastlane-build
+        run: bundle exec fastlane ios build stage:$STAGE
         env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          APP_STORE_API_KEY: ${{ secrets.APP_STORE_API_KEY }}
+          APP_STORE_API_KEY_ID: ${{ secrets.APP_STORE_API_KEY_ID }}
+          FASTLANE_PASSWORD: ${{ secrets.FASTLANE_PASSWORD }}
+          FASTLANE_USER: ${{ secrets.FASTLANE_USER }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
 
-      - name: Archive aab (prod) or apk(dev, staging) artifact
+      - name: Archive gym logs
+        if: failure() && steps.fastlane-build.outcome == 'failure'
         uses: actions/upload-artifact@v3
         with:
-          name: artifact-android
-          path: |
-            android/app/build/**/*.aab
-            android/app/build/**/*.apk
+          name: gym-logs
+          path: /Users/runner/Library/Logs/gym
 
-      - name: Running android fastlane distribution
-        run: bundle exec fastlane android distribution stage:$STAGE
+      - name: Archive ipa artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: artifact-ios
+          path: ios/build/**/*.ipa
+
+      - name: Running ios fastlane distribution
+        run: bundle exec fastlane ios distribution stage:$STAGE
         env:
+          APP_STORE_API_KEY: ${{ secrets.APP_STORE_API_KEY }}
+          APP_STORE_API_KEY_ID: ${{ secrets.APP_STORE_API_KEY_ID }}
+          FASTLANE_PASSWORD: ${{ secrets.FASTLANE_PASSWORD }}
+          FASTLANE_USER: ${{ secrets.FASTLANE_USER }}
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

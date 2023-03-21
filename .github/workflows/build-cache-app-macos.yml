@@ -5,10 +5,6 @@ name: Build cache from main branch to make it available to every other workflow
 on:
   workflow_call:
     inputs:
-      java-version:
-        description: 'Java version for compiling'
-        required: true
-        type: string
       node-version:
         description: 'Node version for compiling'
         required: true
@@ -21,9 +17,8 @@ on:
       NPM_TOKEN:
         required: true
 
-jobs:
   build-cache:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - name: Check out source code
         uses: actions/checkout@v3
@@ -47,12 +42,13 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Set up Java version for sdkmanager
-        uses: actions/setup-java@v3
+      - name: Cache Pods
+        uses: actions/cache@v3
         with:
-          distribution: 'temurin'
-          java-version: ${{ inputs.java-version }}
-          cache: 'gradle'
+          path: ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
 
-      - name: Install Gradle dependencies
-        run: bundle exec fastlane android install_dependencies
+      - name: Install Pods
+        run: yarn run ios:install
