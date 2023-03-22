@@ -137,7 +137,7 @@ jobs:
             ${{ runner.os }}-pods-
 
       - name: Install Pods
-        run: yarn run ios:install
+        run: bundle exec fastlane ios install_dependencies
 
       - name: Download built ios bundle
         uses: actions/download-artifact@v3

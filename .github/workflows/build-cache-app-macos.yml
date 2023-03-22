@@ -52,4 +52,4 @@ jobs:
             ${{ runner.os }}-pods-
 
       - name: Install Pods
-        run: yarn run ios:install
+        run: bundle exec fastlane ios install_dependencies
