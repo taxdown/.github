@@ -40,13 +40,13 @@ jobs:
       - id: set-environment
         name: Set environment
         run: |
-          if [[ $GITHUB_REF == *"release/development"* ]] ; then
+          if [[ $GITHUB_REF == *"release/dev"* ]] ; then
               echo "environment=dev" >> $GITHUB_OUTPUT
               echo "should_deploy=true" >> $GITHUB_OUTPUT
           elif [[ $GITHUB_REF == *"release/staging"* ]] ; then
               echo "environment=staging" >> $GITHUB_OUTPUT
               echo "should_deploy=true" >> $GITHUB_OUTPUT
-          elif [[ $GITHUB_REF == *"release/production"* ]] ; then
+          elif [[ $GITHUB_REF == *"release/prod"* ]] ; then
               echo "environment=prod" >> $GITHUB_OUTPUT
               echo "should_deploy=true" >> $GITHUB_OUTPUT
           fi
