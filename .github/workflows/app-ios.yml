@@ -99,7 +99,6 @@ jobs:
       name: ${{ needs.prepare-environment.outputs.environment }}
     env:
       STAGE: ${{ needs.prepare-environment.outputs.environment }}
-      ITMSTRANSPORTER_FORCE_ITMS_PACKAGE_UPLOAD: true
     steps:
       - name: Set up ssh key for GitHub certificates repository access
         uses: webfactory/ssh-agent@v0.7.0
