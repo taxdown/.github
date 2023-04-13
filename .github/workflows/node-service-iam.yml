@@ -71,6 +71,7 @@ jobs:
           registry-url: https://registry.npmjs.org
           scope: '@taxdown'
           cache: 'npm'
+          cache-dependency-path: ${{ inputs.service }}/package-lock.json
 
       - name: Installing NPM dependencies
         run: cd '${{ inputs.service }}' && npm ci
