@@ -1,0 +1,129 @@
+name: Handle python service build and deploy on monorepo CI from shared workflow
+
+on:
+  workflow_call:
+    inputs:
+      aws-region:
+        description: 'AWS region for building and deploy'
+        required: true
+        type: string
+      service:
+        description: 'Service of the monorepo'
+        required: true
+        type: string
+      python-version:
+        description: 'Python version to run'
+        required: true
+        type: string
+      node-version:
+        description: 'Node version for compiling'
+        required: true
+        type: string
+    secrets:
+      AWS_DEPLOYMENT_ROLE:
+        required: true
+      NPM_TOKEN:
+        required: true
+
+jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-environments.outputs.matrix }}
+      should_release: ${{ steps.set-environments.outputs.should_release }}
+    steps:
+      - id: set-environments
+        run: |
+          if [[ "$GITHUB_REF" == refs/heads/master ]] ; then
+              echo "matrix=[\"dev\",\"staging\"]" >> $GITHUB_OUTPUT
+              echo "should_release=true" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF" == refs/tags/${{inputs.service}}-v* ]] ; then
+              echo "matrix=[\"prod\"]" >> $GITHUB_OUTPUT
+              echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+              echo "matrix=[\"staging\"]" >> $GITHUB_OUTPUT
+              echo "should_release=false" >> $GITHUB_OUTPUT
+          fi
+  build:
+    name: Build python service and run tests 🔨
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ matrix.current-environment }}
+    env:
+      NODE_OPTIONS: --max_old_space_size=7168
+      STAGE: ${{ matrix.current-environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        current-environment: ${{fromJson(needs.prepare-matrix.outputs.matrix)}}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1-node16
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Set NPM registry
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: https://registry.npmjs.org
+          scope: '@taxdown'
+
+      - name: Installing NPM dependencies
+        run: cd '${{ inputs.service }}' && npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{inputs.python-version}}
+
+      - name: Cache Poetry cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-cache-${{ runner.os }}-${{ inputs.python-version }}-${{ env.POETRY_VERSION }}
+
+      - name: Cache Packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local
+          key: poetry-${{ runner.os }}-${{ inputs.python-version }}-${{ hashFiles('**/poetry.lock') }}-${{ hashFiles('.github/workflows/*.yml') }}
+
+      - name: Install and configure Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: false
+          installer-parallel: true
+
+      - name: Install python dependencies via poetry
+        run: cd '${{ inputs.service }}'/src && poetry install
+
+      - name: Run python sanity checks for service
+        run: |
+          cd '${{ inputs.service }}'/src
+          poetry run flake8
+          poetry run black .
+          poetry run mypy --ignore-missing-imports --scripts-are-modules -p taxdown --namespace-packages
+          poetry run isort --filter-files .
+
+      - name: Run tests
+        run: cd '${{ inputs.service }}'/src && poetry run pytest
+
+      - name: Run build application
+        if: ${{ needs.prepare-matrix.outputs.should_release == 'true' }}
+        run: cd '${{ inputs.service }}' && npm run build
+        timeout-minutes: 300
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Deploy the server 🚀
+        if: ${{ needs.prepare-matrix.outputs.should_release == 'true' }}
+        run: cd '${{ inputs.service }}' && npm run deploy
