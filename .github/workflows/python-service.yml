@@ -111,7 +111,7 @@ jobs:
           cd '${{ inputs.service }}'/src
           poetry run flake8
           poetry run black .
-          poetry run mypy --ignore-missing-imports --scripts-are-modules -p taxdown --namespace-packages
+          poetry run mypy --ignore-missing-imports --scripts-are-modules -m taxdown
           poetry run isort --filter-files .
 
       - name: Run tests
