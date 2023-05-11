@@ -115,7 +115,7 @@ jobs:
           poetry run isort --filter-files .
 
       - name: Run tests
-        run: cd '${{ inputs.service }}'/src && poetry run pytest
+        run: cd '${{ inputs.service }}'/src && poetry run python -m pytest
 
       - name: Run build application
         if: ${{ needs.prepare-matrix.outputs.should_release == 'true' }}
