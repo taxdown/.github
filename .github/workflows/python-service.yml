@@ -29,6 +29,8 @@ on:
         required: true
       NPM_TOKEN:
         required: true
+      GIT_SSH_KEY:
+        required: false
 
 jobs:
   prepare-matrix:
@@ -58,6 +60,7 @@ jobs:
     env:
       NODE_OPTIONS: --max_old_space_size=7168
       STAGE: ${{ matrix.current-environment }}
+      GIT_SSH_KEY: ${{ secrets.GIT_SSH_KEY }}
     strategy:
       fail-fast: false
       matrix:
@@ -107,6 +110,13 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: false
           installer-parallel: true
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        if: ${{ env.GIT_SSH_KEY != '' }}
+        with:
+          key: ${{ secrets.GIT_SSH_KEY }}
+          known_hosts: unnecessary
 
       - name: Install python dependencies via poetry
         run: cd '${{ inputs.service }}'/src && poetry install
