@@ -87,6 +87,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: bundle-android
+          retention-days: 7
           path: |
             android/index.android.bundle
             android/app/build/bundle/index.android.bundle.map
@@ -157,6 +158,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: artifact-android
+          retention-days: 30
           path: |
             android/app/build/**/*.aab
             android/app/build/**/*.apk

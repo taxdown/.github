@@ -85,6 +85,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: bundle-ios
+          retention-days: 7
           path: |
             ios/main.jsbundle
             ios/build/bundle/main.jsbundle.map
@@ -159,12 +160,14 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: gym-logs
+          retention-days: 7
           path: /Users/runner/Library/Logs/gym
 
       - name: Archive ipa artifact
         uses: actions/upload-artifact@v3
         with:
           name: artifact-ios
+          retention-days: 30
           path: ios/build/**/*.ipa
 
       - name: Running ios fastlane distribution
