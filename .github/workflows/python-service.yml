@@ -158,12 +158,46 @@ jobs:
       - name: Add Coverage PR Comment
         uses: marocchino/sticky-pull-request-comment@v2
         if: |
-          github.event_name == 'pull_request' ||
+          github.event_name == 'pull_request' &&
           ${{ env.RUN_COVERAGE == 'true' }}
         with:
           hide_and_recreate: true
           hide_classify: "OUTDATED"
           path: code-coverage-results.md
+
+      - name: Store coverage report artifact
+        uses: actions/upload-artifact@v3
+        if: |
+          ${{ needs.prepare-matrix.outputs.should_release == 'true' }} &&
+          ${{ env.RUN_COVERAGE == 'true' }}
+        with:
+          name: coverage-main.xml
+          path: ${{ inputs.service }}/src/coverage.xml
+
+      - name: Download artifact
+        uses: dawidd6/action-download-artifact@v2
+        if: ${{ env.RUN_COVERAGE == 'true' }}
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          name: coverage-main.xml
+          branch: main
+          check_artifacts: true
+          search_artifacts: true
+          if_no_artifact_found: warn
+
+      - name: Calculate coverage diff
+        if: ${{ env.RUN_COVERAGE == 'true' }}
+        run: |
+          if [ -f coverage.xml ]; then
+            MAIN_COVERAGE=$(cat coverage.xml | head -n2 | tail -n1 | grep -oP 'line-rate="\K[\d.]+')
+            COVERAGE=$(cat '${{ inputs.service }}'/src/coverage.xml | head -n2 | tail -n1 | grep -oP 'line-rate="\K[\d.]+')
+            DIFF=$(python -c "print(int(($MAIN_COVERAGE - $COVERAGE) * 100))")
+            if [[ $DIFF -gt 0 ]]; then
+              echo "Current coveregage: $COVERAGE" < Main coverage: $MAIN_COVERAGE; exit 1;
+            else
+              echo "Current coveregage: $COVERAGE" >= Main coverage: $MAIN_COVERAGE;
+            fi
+          fi
 
       - name: Run build application
         if: ${{ needs.prepare-matrix.outputs.should_release == 'true' }}
