@@ -184,6 +184,7 @@ jobs:
           check_artifacts: true
           search_artifacts: true
           if_no_artifact_found: warn
+          workflow_conclusion: ""
 
       - name: Calculate coverage diff
         if: ${{ env.RUN_COVERAGE == 'true' }}
@@ -193,9 +194,9 @@ jobs:
             COVERAGE=$(cat '${{ inputs.service }}'/src/coverage.xml | head -n2 | tail -n1 | grep -oP 'line-rate="\K[\d.]+')
             DIFF=$(python -c "print(int(($MAIN_COVERAGE - $COVERAGE) * 100))")
             if [[ $DIFF -gt 0 ]]; then
-              echo "Current coveregage: $COVERAGE" < Main coverage: $MAIN_COVERAGE; exit 1;
+              echo "Current coverage: $COVERAGE < Main coverage: $MAIN_COVERAGE"; exit 1;
             else
-              echo "Current coveregage: $COVERAGE" >= Main coverage: $MAIN_COVERAGE;
+              echo "Current coverage: $COVERAGE >= Main coverage: $MAIN_COVERAGE";
             fi
           fi
 
