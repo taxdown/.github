@@ -1,0 +1,21 @@
+name: release-please
+
+on: 
+  workflow_call:
+    secrets:
+      USER_GITHUB_TOKEN:
+        required: true
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{steps.release.outputs.releases_created}}
+      paths_released: ${{steps.release.outputs.paths_released}}
+    steps:
+      - uses: google-github-actions/release-please-action@v3
+        id: release
+        with:
+          command: manifest
+          monorepo-tags: true
+          token: ${{ secrets.USER_GITHUB_TOKEN }}
