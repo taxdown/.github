@@ -25,6 +25,7 @@ jobs:
           scopes: |
             core
             deps
+            deps-dev
             main
             master
             ui
