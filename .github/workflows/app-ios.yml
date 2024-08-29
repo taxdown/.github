@@ -30,7 +30,7 @@ on:
         required: true
 
 jobs:
-  prepare-environment:
+  prepare:
     runs-on: ubuntu-latest
     name: Prepares the env vars for the stage and if it should be deployed
     outputs:
@@ -51,10 +51,10 @@ jobs:
               echo "should_deploy=true" >> $GITHUB_OUTPUT
           fi
 
-  build-ios:
+  build:
     runs-on: ubuntu-latest
     name: Build the iOs bundle and upload artifact, run tests, lint 🔨
-    needs: prepare-environment
+    needs: prepare
     steps:
       - name: Check out source code
         uses: actions/checkout@v3
@@ -91,10 +91,10 @@ jobs:
             ios/build/bundle/main.jsbundle.map
             ios/build/bundle/
 
-  deployment-ios:
+  deploy:
     runs-on: macos-13
     name: Build 🔨 the iOs ipa and deploy 🚀 when the branch is one of the environments
-    needs: [prepare-environment, build-ios]
+    needs: [prepare, build]
     if: ${{ needs.prepare-environment.outputs.should_deploy == 'true' }}
     environment:
       name: ${{ needs.prepare-environment.outputs.environment }}
