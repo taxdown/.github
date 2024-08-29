@@ -18,8 +18,9 @@ on:
         required: true
 
 jobs:
-  build-cache:
+  build:
     runs-on: macos-latest
+    name: Build the cache on macos for app building
     steps:
       - name: Check out source code
         uses: actions/checkout@v3
