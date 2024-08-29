@@ -38,7 +38,8 @@ on:
         required: false
 
 jobs:
-  prepare-matrix:
+  prepare:
+    name: Prepare the building matrix based on branch and tags
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-environments.outputs.matrix }}
@@ -58,7 +59,7 @@ jobs:
           fi
   build:
     name: Build python service and run tests 🔨
-    needs: prepare-matrix
+    needs: prepare
     runs-on: ubuntu-latest
     environment:
       name: ${{ matrix.current-environment }}
