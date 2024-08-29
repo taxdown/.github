@@ -22,8 +22,9 @@ on:
         required: true
 
 jobs:
-  build-cache:
+  build:
     runs-on: ubuntu-latest
+    name: Build the cache on ubuntu for app building
     steps:
       - name: Check out source code
         uses: actions/checkout@v3
