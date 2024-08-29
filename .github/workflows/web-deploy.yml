@@ -24,7 +24,8 @@ on:
         required: true
 
 jobs:
-  prepare-matrix:
+  prepare:
+    name: Prepare the building matrix based on branch and tags
     if: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     outputs:
@@ -39,7 +40,7 @@ jobs:
           fi
   build:
     name: Build node service and run tests 🔨
-    needs: prepare-matrix
+    needs: prepare
     if: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     environment:
