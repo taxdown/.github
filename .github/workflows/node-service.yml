@@ -28,7 +28,7 @@ on:
         required: true
 
 jobs:
-  prepare-matrix:
+  prepare:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-environments.outputs.matrix }}
@@ -51,7 +51,7 @@ jobs:
           fi
   build:
     name: Build node service and run tests 🔨
-    needs: prepare-matrix
+    needs: prepare
     runs-on: ubuntu-latest
     environment:
       name: ${{ matrix.current-environment }}
