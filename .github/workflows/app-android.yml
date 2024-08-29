@@ -32,7 +32,7 @@ on:
         required: true
 
 jobs:
-  prepare-environment:
+  prepare:
     runs-on: ubuntu-latest
     name: Prepares the env vars for the stage and if it should be deployed
     outputs:
@@ -53,10 +53,10 @@ jobs:
               echo "should_deploy=true" >> $GITHUB_OUTPUT
           fi
 
-  build-android:
+  build:
     runs-on: ubuntu-latest
     name: Build the android bundle and upload artifact, run tests, lint 🔨
-    needs: prepare-environment
+    needs: prepare
     steps:
       - name: Check out source code
         uses: actions/checkout@v3
@@ -93,10 +93,10 @@ jobs:
             android/app/build/bundle/index.android.bundle.map
             android/app/build/bundle/
 
-  deployment-android:
+  deploy:
     runs-on: ubuntu-latest
     name: Build 🔨 the android apk/aab and deploy 🚀 when the branch is one of the environments
-    needs: [prepare-environment, build-android]
+    needs: [prepare, build]
     if: ${{ needs.prepare-environment.outputs.should_deploy == 'true' }}
     environment:
       name: ${{ needs.prepare-environment.outputs.environment }}
