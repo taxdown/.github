@@ -97,11 +97,11 @@ jobs:
     runs-on: ubuntu-latest
     name: Build 🔨 the android apk/aab and deploy 🚀 when the branch is one of the environments
     needs: [prepare, build]
-    if: ${{ needs.prepare-environment.outputs.should_deploy == 'true' }}
+    if: ${{ needs.prepare.outputs.should_deploy == 'true' }}
     environment:
-      name: ${{ needs.prepare-environment.outputs.environment }}
+      name: ${{ needs.prepare.outputs.environment }}
     env:
-      STAGE: ${{ needs.prepare-environment.outputs.environment }}
+      STAGE: ${{ needs.prepare.outputs.environment }}
     steps:
       - name: Check out source code
         uses: actions/checkout@v3
