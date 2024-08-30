@@ -71,7 +71,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        current-environment: ${{fromJson(needs.prepare-matrix.outputs.matrix)}}
+        current-environment: ${{fromJson(needs.prepare.outputs.matrix)}}
     steps:
       - name: Check out source code
         uses: actions/checkout@v3
@@ -163,13 +163,13 @@ jobs:
           ${{ env.RUN_COVERAGE == 'true' }}
         with:
           hide_and_recreate: true
-          hide_classify: "OUTDATED"
+          hide_classify: 'OUTDATED'
           path: code-coverage-results.md
 
       - name: Store coverage report artifact
         uses: actions/upload-artifact@v3
         if: |
-          ${{ needs.prepare-matrix.outputs.should_release == 'true' }} &&
+          ${{ needs.prepare.outputs.should_release == 'true' }} &&
           ${{ env.RUN_COVERAGE == 'true' }}
         with:
           name: coverage-main.xml
@@ -185,7 +185,7 @@ jobs:
           check_artifacts: true
           search_artifacts: true
           if_no_artifact_found: warn
-          workflow_conclusion: ""
+          workflow_conclusion: ''
 
       - name: Calculate coverage diff
         if: ${{ env.RUN_COVERAGE == 'true' }}
@@ -202,12 +202,12 @@ jobs:
           fi
 
       - name: Run build application
-        if: ${{ needs.prepare-matrix.outputs.should_release == 'true' }}
+        if: ${{ needs.prepare.outputs.should_release == 'true' }}
         run: cd '${{ inputs.service }}' && npm run build
         timeout-minutes: 300
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Deploy the server 🚀
-        if: ${{ needs.prepare-matrix.outputs.should_release == 'true' }}
+        if: ${{ needs.prepare.outputs.should_release == 'true' }}
         run: cd '${{ inputs.service }}' && npm run deploy

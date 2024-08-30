@@ -95,11 +95,11 @@ jobs:
     runs-on: macos-13
     name: Build 🔨 the iOs ipa and deploy 🚀 when the branch is one of the environments
     needs: [prepare, build]
-    if: ${{ needs.prepare-environment.outputs.should_deploy == 'true' }}
+    if: ${{ needs.prepare.outputs.should_deploy == 'true' }}
     environment:
-      name: ${{ needs.prepare-environment.outputs.environment }}
+      name: ${{ needs.prepare.outputs.environment }}
     env:
-      STAGE: ${{ needs.prepare-environment.outputs.environment }}
+      STAGE: ${{ needs.prepare.outputs.environment }}
     steps:
       - name: Set up ssh key for GitHub certificates repository access
         uses: webfactory/ssh-agent@v0.7.0

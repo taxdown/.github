@@ -51,7 +51,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        current-environment: ${{fromJson(needs.prepare-matrix.outputs.matrix)}}
+        current-environment: ${{fromJson(needs.prepare.outputs.matrix)}}
     steps:
       - name: Check out source code
         uses: actions/checkout@v3
