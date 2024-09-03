@@ -142,7 +142,7 @@ jobs:
           echo "$ANDROID_SERVICE_KEY_BASE64" | base64 -di > ${{ github.workspace }}/.github/android/android-service-key.json
 
       - name: Download built android bundle
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           name: bundle-android
           path: android
