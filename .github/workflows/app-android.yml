@@ -84,7 +84,7 @@ jobs:
         run: yarn run build:android
 
       - name: Archive android bundle
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: bundle-android
           retention-days: 7
@@ -142,7 +142,7 @@ jobs:
           echo "$ANDROID_SERVICE_KEY_BASE64" | base64 -di > ${{ github.workspace }}/.github/android/android-service-key.json
 
       - name: Download built android bundle
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: bundle-android
           path: android
@@ -155,7 +155,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - name: Archive aab (prod) or apk(dev, staging) artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: artifact-android
           retention-days: 30

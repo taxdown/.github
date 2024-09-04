@@ -82,7 +82,7 @@ jobs:
         run: yarn run build:ios
 
       - name: Archive iOs bundle
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: bundle-ios
           retention-days: 7
@@ -140,7 +140,7 @@ jobs:
         run: bundle exec fastlane ios install_dependencies
 
       - name: Download built ios bundle
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           name: bundle-ios
           path: ios
@@ -157,14 +157,14 @@ jobs:
 
       - name: Archive gym logs
         if: failure() && steps.fastlane-build.outcome == 'failure'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: gym-logs
           retention-days: 7
           path: /Users/runner/Library/Logs/gym
 
       - name: Archive ipa artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: artifact-ios
           retention-days: 30
