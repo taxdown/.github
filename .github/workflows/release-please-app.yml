@@ -1,0 +1,33 @@
+name: release-please-app
+
+on: 
+  workflow_call:
+    inputs:
+      GITHUB_APP_ID:
+        description: 'The ID of the GitHub App to authenticate as when using release-please'
+        required: true
+        type: string
+    secrets:
+      GITHUB_APP_PRIVATE_KEY:
+        description: 'The private key of the GitHub App to authenticate as when using release-please'
+        required: true
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{steps.release.outputs.releases_created}}
+      paths_released: ${{steps.release.outputs.paths_released}}
+    steps:
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ inputs.GITHUB_APP_ID }}
+          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@v3
+        id: release
+        with:
+          command: manifest
+          monorepo-tags: true
+          token: ${{ steps.app-token.outputs.token }}
