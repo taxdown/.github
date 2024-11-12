@@ -25,7 +25,7 @@ jobs:
           app-id: ${{ inputs.GITHUB_APP_ID }}
           private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
 
-      - uses: googleapis/release-please-action@v3
+      - uses: googleapis/release-please-action@v4
         id: release
         with:
           command: manifest
