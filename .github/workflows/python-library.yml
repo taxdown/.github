@@ -18,24 +18,8 @@ on:
         default: master
 
 jobs:
-  prepare:
-    name: Prepare the building matrix based on branch and tags
-    runs-on: ubuntu-latest
-    outputs:
-      should_release: ${{ steps.set-environments.outputs.should_release }}
-    steps:
-      - id: set-environments
-        run: |
-          if [[ "$GITHUB_REF" == refs/heads/${{inputs.main-branch}} ]] ; then
-              echo "should_release=true" >> $GITHUB_OUTPUT
-          elif [[ "$GITHUB_REF" == refs/tags/${{inputs.library}}-v* ]] ; then
-              echo "should_release=true" >> $GITHUB_OUTPUT
-          else
-              echo "should_release=false" >> $GITHUB_OUTPUT
-          fi
   build:
     name: Build python library and run tests 🔨
-    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - name: Check out source code
