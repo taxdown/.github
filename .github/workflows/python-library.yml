@@ -1,0 +1,70 @@
+name: Handle python library build and tests on monorepo CI from shared workflow
+
+on:
+  workflow_call:
+    inputs:
+      library:
+        description: 'Library name in the monorepo'
+        required: true
+        type: string
+      python-version:
+        description: 'Python version to run'
+        required: true
+        type: string
+      main-branch:
+        description: 'Main branch of the monorepo'
+        required: false
+        type: string
+        default: master
+
+jobs:
+  prepare:
+    name: Prepare the building matrix based on branch and tags
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.set-environments.outputs.should_release }}
+    steps:
+      - id: set-environments
+        run: |
+          if [[ "$GITHUB_REF" == refs/heads/${{inputs.main-branch}} ]] ; then
+              echo "should_release=true" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF" == refs/tags/${{inputs.library}}-v* ]] ; then
+              echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+              echo "should_release=false" >> $GITHUB_OUTPUT
+          fi
+  build:
+    name: Build python library and run tests 🔨
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{inputs.python-version}}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install python dependencies via uv
+        run: cd '${{ inputs.library }}' && uv sync --all-extras --dev
+
+      - name: Run python sanity checks for library
+        run: |
+          cd '${{ inputs.library }}'
+          uv run ruff check --output-format=github .
+
+      - name: Run additional python checks
+        run: |
+          cd '${{ inputs.library }}'
+          uv run mypy --ignore-missing-imports --scripts-are-modules -m taxdown
+
+      - name: Run tests
+        run: |
+          cd '${{ inputs.library }}'
+          uv run pytest .
