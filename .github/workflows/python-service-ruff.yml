@@ -15,10 +15,6 @@ on:
         description: 'Python version to run'
         required: true
         type: string
-      node-version:
-        description: 'Node version for compiling'
-        required: true
-        type: string
       main-branch:
         description: 'Main branch of the monorepo'
         required: false
@@ -74,18 +70,18 @@ jobs:
         current-environment: ${{fromJson(needs.prepare.outputs.matrix)}}
     steps:
       - name: Check out source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1-node16
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE }}
           aws-region: ${{ inputs.aws-region }}
 
       - name: Set NPM registry
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: '20'
           registry-url: https://registry.npmjs.org
           scope: '@taxdown'
 
