@@ -11,11 +11,6 @@ on:
         description: 'Python version to run'
         required: true
         type: string
-      main-branch:
-        description: 'Main branch of the monorepo'
-        required: false
-        type: string
-        default: master
 
 jobs:
   build:
