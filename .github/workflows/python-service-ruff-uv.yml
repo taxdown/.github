@@ -1,0 +1,144 @@
+name: Handle python service build and deploy on monorepo CI from shared workflow
+
+on:
+  workflow_call:
+    inputs:
+      aws-region:
+        description: 'AWS region for building and deploy'
+        required: true
+        type: string
+      service:
+        description: 'Service of the monorepo'
+        required: true
+        type: string
+      python-version:
+        description: 'Python version to run'
+        required: true
+        type: string
+      main-branch:
+        description: 'Main branch of the monorepo'
+        required: false
+        type: string
+        default: master
+      run-coverage:
+        description: 'Run coverage of the tests'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      AWS_DEPLOYMENT_ROLE:
+        required: true
+      NPM_TOKEN:
+        required: true
+      GIT_TOKEN:
+        required: true
+
+jobs:
+  prepare:
+    name: Prepare the building matrix based on branch and tags
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-environments.outputs.matrix }}
+      should_release: ${{ steps.set-environments.outputs.should_release }}
+    steps:
+      - id: set-environments
+        run: |
+          if [[ "$GITHUB_REF" == refs/heads/${{inputs.main-branch}} ]] ; then
+              echo "matrix=[\"dev\",\"staging\"]" >> $GITHUB_OUTPUT
+              echo "should_release=true" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF" == refs/tags/${{inputs.service}}-v* ]] ; then
+              echo "matrix=[\"prod\"]" >> $GITHUB_OUTPUT
+              echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+              echo "matrix=[\"staging\"]" >> $GITHUB_OUTPUT
+              echo "should_release=false" >> $GITHUB_OUTPUT
+          fi
+  build:
+    name: Build python service and run tests 🔨
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ matrix.current-environment }}
+    env:
+      NODE_OPTIONS: --max_old_space_size=7168
+      STAGE: ${{ matrix.current-environment }}
+      RUN_COVERAGE: ${{ inputs.run-coverage }}
+    strategy:
+      fail-fast: false
+      matrix:
+        current-environment: ${{fromJson(needs.prepare.outputs.matrix)}}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Set NPM registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: https://registry.npmjs.org
+          scope: '@taxdown'
+
+      - name: Installing NPM dependencies
+        run: cd '${{ inputs.service }}' && npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{inputs.python-version}}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install python dependencies via uv
+        run: |
+          # Set GIT_ASKPASS to handle Git authentication
+          export GIT_ASKPASS=/tmp/.git-askpass
+          echo 'echo $GIT_TOKEN' > $GIT_ASKPASS
+          chmod +x $GIT_ASKPASS
+  
+          # Configure Git to use HTTPS with the token
+          git config --global url."https://github.com/".insteadOf "https://github.com/"
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git config --global url."https://github.com/".insteadOf "ssh://git@github.com"
+
+          cd '${{ inputs.service }}'/src
+          uv sync --all-extras --dev
+  
+        env:
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+
+      - name: Run python sanity checks for service
+        run: |
+          cd '${{ inputs.service }}'/src
+          uv run ruff check --output-format=github .
+
+      - name: Run tests
+        run: |
+          cd '${{ inputs.service }}'/src
+          if [[ ${{ env.RUN_COVERAGE }} = 'true' ]]; then
+            args='--cov --cov-report xml'
+          else
+            args=''
+          fi
+          uv run pytest $args
+
+      - name: Run build application
+        if: ${{ needs.prepare.outputs.should_release == 'true' }}
+        run: cd '${{ inputs.service }}' && npm run build
+        timeout-minutes: 300
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Deploy the server 🚀
+        if: ${{ needs.prepare.outputs.should_release == 'true' }}
+        run: cd '${{ inputs.service }}' && npm run deploy
