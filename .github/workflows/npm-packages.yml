@@ -7,8 +7,8 @@ on:
         description: 'Node version for compiling'
         required: true
         type: string
-      package:
-        description: 'Package of the monorepo'
+      package-path:
+        description: 'Package path of the monorepo'
         required: true
         type: string
     secrets:
@@ -38,18 +38,18 @@ jobs:
           scope: '@taxdown'
 
       - name: Installing NPM dependencies
-        run: cd '${{ inputs.package }}' && npm ci
+        run: cd '${{ inputs.package-path }}' && npm ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Run build application
-        run: cd '${{ inputs.package }}' && npm run build
+        run: cd '${{ inputs.package-path }}' && npm run build
 
       - name: Run linter
-        run: cd '${{ inputs.package }}' && npm run lint
+        run: cd '${{ inputs.package-path }}' && npm run lint
 
       - name: Run tests
-        run: cd '${{ inputs.package }}' && npm run test
+        run: cd '${{ inputs.package-path }}' && npm run test
   deploy:
     name: Deploy npm package 🚀
     runs-on: ubuntu-latest
@@ -73,22 +73,22 @@ jobs:
           scope: '@taxdown'
 
       - name: Installing NPM dependencies on production mode
-        run: cd '${{ inputs.package }}' && npm ci --ignore-scripts
+        run: cd '${{ inputs.package-path }}' && npm ci --ignore-scripts
         env:
           # NODE_ENV: production # disabled until we figure out a way of making the build deps (esbuild, glob, typescript, etc.) to load
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Run build application
-        run: cd '${{ inputs.package }}' && npm run build
+        run: cd '${{ inputs.package-path }}' && npm run build
 
       - name: Publish NPM package
         if: ${{ !contains(github.ref, 'beta') }}
-        run: cd '${{ inputs.package }}' && npm publish
+        run: cd '${{ inputs.package-path }}' && npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish beta NPM package
         if: ${{ contains(github.ref, 'beta') }}
-        run: cd '${{ inputs.package }}' && npm publish --tag beta
+        run: cd '${{ inputs.package-path }}' && npm publish --tag beta
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
