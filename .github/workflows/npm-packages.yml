@@ -1,0 +1,94 @@
+name: Handle npm package CI from shared workflow npm-package
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node version for compiling'
+        required: true
+        type: string
+      package:
+        description: 'Package of the monorepo'
+        required: true
+        type: string
+    secrets:
+      NPM_TOKEN:
+        required: true
+
+jobs:
+  build:
+    name: Build npm package and run tests 🔨
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+
+      - name: Restore cache
+        uses: actions/cache@v3
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Set NPM registry
+        uses: actions/setup-node@v4
+        with:
+          # cache: 'npm' this caches only the global cache directory, so we need to use cache action to cache node_modules
+          node-version: ${{ inputs.node-version }}
+          registry-url: https://registry.npmjs.org
+          scope: '@taxdown'
+
+      - name: Installing NPM dependencies
+        run: cd '${{ inputs.package }}' && npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Run build application
+        run: cd '${{ inputs.package }}' && npm run build
+
+      - name: Run linter
+        run: cd '${{ inputs.package }}' && npm run lint
+
+      - name: Run tests
+        run: cd '${{ inputs.package }}' && npm run test
+  deploy:
+    name: Deploy npm package 🚀
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+
+      - name: Restore cache
+        uses: actions/cache@v3
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Set NPM registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: https://registry.npmjs.org
+          scope: '@taxdown'
+
+      - name: Installing NPM dependencies on production mode
+        run: cd '${{ inputs.package }}' && npm ci --ignore-scripts
+        env:
+          # NODE_ENV: production # disabled until we figure out a way of making the build deps (esbuild, glob, typescript, etc.) to load
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Run build application
+        run: cd '${{ inputs.package }}' && npm run build
+
+      - name: Publish NPM package
+        if: ${{ !contains(github.ref, 'beta') }}
+        run: cd '${{ inputs.package }}' && npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish beta NPM package
+        if: ${{ contains(github.ref, 'beta') }}
+        run: cd '${{ inputs.package }}' && npm publish --tag beta
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
