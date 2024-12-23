@@ -144,3 +144,5 @@ jobs:
       - name: Deploy the server 🚀
         if: ${{ needs.prepare.outputs.should_release == 'true' }}
         run: cd '${{ inputs.service }}' && npm run deploy
+        env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
