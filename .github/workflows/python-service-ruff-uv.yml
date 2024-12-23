@@ -11,26 +11,26 @@ on:
         description: 'Service of the monorepo'
         required: true
         type: string
-      python-version:
-        description: 'Python version to run'
-        required: true
-        type: string
       main-branch:
         description: 'Main branch of the monorepo'
         required: false
         type: string
-        default: master
+        default: main
       run-coverage:
         description: 'Run coverage of the tests'
         required: false
         type: boolean
         default: false
+      github-app-id:
+        description: 'Github app id'
+        type: string
+        required: true
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
       NPM_TOKEN:
         required: true
-      GIT_TOKEN:
+      GITHUB_APP_PRIVATE_KEY:
         required: true
 
 jobs:
@@ -70,6 +70,8 @@ jobs:
     steps:
       - name: Check out source code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -77,22 +79,12 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE }}
           aws-region: ${{ inputs.aws-region }}
 
-      - name: Set NPM registry
-        uses: actions/setup-node@v4
+      - uses: actions/create-github-app-token@v1
+        id: app-token
         with:
-          node-version: '20'
-          registry-url: https://registry.npmjs.org
-          scope: '@taxdown'
-
-      - name: Installing NPM dependencies
-        run: cd '${{ inputs.service }}' && npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Install Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{inputs.python-version}}
+          app-id: ${{ inputs.github-app-id }}
+          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -101,11 +93,17 @@ jobs:
 
       - name: Install python dependencies via uv
         run: |
+          # Check if GIT_TOKEN is set
+          if [[ -z "$GIT_TOKEN" ]]; then
+            echo "Error: GIT_TOKEN is not set"
+            exit 1
+          fi
+
           # Set GIT_ASKPASS to handle Git authentication
           export GIT_ASKPASS=/tmp/.git-askpass
           echo 'echo $GIT_TOKEN' > $GIT_ASKPASS
           chmod +x $GIT_ASKPASS
-  
+
           # Configure Git to use HTTPS with the token
           git config --global url."https://github.com/".insteadOf "https://github.com/"
           git config --global url."https://github.com/".insteadOf "git@github.com:"
@@ -113,9 +111,8 @@ jobs:
 
           cd '${{ inputs.service }}'/src
           uv sync --all-extras --dev
-  
         env:
-          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Run python sanity checks for service
         run: |
@@ -131,6 +128,11 @@ jobs:
             args=''
           fi
           uv run pytest $args
+
+      - name: Installing NPM dependencies
+        run: cd '${{ inputs.service }}' && npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Run build application
         if: ${{ needs.prepare.outputs.should_release == 'true' }}
