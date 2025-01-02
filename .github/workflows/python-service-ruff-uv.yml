@@ -134,6 +134,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Install infrastructure NPM dependencies
+        run: cd '${{ inputs.service }}' && cd infrastructure && npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+  
+
       - name: Run build application
         if: ${{ needs.prepare.outputs.should_release == 'true' }}
         run: cd '${{ inputs.service }}' && npm run build
