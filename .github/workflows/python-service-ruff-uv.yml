@@ -141,6 +141,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Set up QEMU (for ARM emulation)
+        if: ${{ needs.prepare.outputs.should_release == 'true' }}
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Deploy the server 🚀
         if: ${{ needs.prepare.outputs.should_release == 'true' }}
         run: cd '${{ inputs.service }}' && npm run deploy
