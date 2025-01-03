@@ -129,6 +129,14 @@ jobs:
           fi
           uv run pytest $args
 
+      - name: Set NPM registry
+        uses: actions/setup-node@v4
+        with:
+          # cache: 'npm' this caches only the global cache directory, so we need to use cache action to cache node_modules
+          node-version: '20'
+          registry-url: https://registry.npmjs.org
+          scope: '@taxdown'
+
       - name: Installing service NPM dependencies
         run: cd '${{ inputs.service }}' && npm ci
         env:
@@ -138,7 +146,6 @@ jobs:
         run: cd '${{ inputs.service }}' && cd infrastructure && npm ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-  
 
       - name: Run build application
         if: ${{ needs.prepare.outputs.should_release == 'true' }}
