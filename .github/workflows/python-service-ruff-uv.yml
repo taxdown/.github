@@ -16,11 +16,6 @@ on:
         required: false
         type: string
         default: main
-      run-coverage:
-        description: 'Run coverage of the tests'
-        required: false
-        type: boolean
-        default: false
       github-app-id:
         description: 'Github app id'
         type: string
@@ -53,34 +48,35 @@ jobs:
               echo "matrix=[\"staging\"]" >> $GITHUB_OUTPUT
               echo "should_release=false" >> $GITHUB_OUTPUT
           fi
-  build:
-    name: Build python service and run tests 🔨
+  build-and-test:
+    name: Build & Test (Python + Infra) 🔨
     needs: prepare
     runs-on: ubuntu-latest
     environment:
       name: ${{ matrix.current-environment }}
     env:
+      SERVICE_PATH: ${{ inputs.service }}
       NODE_OPTIONS: --max_old_space_size=7168
       STAGE: ${{ matrix.current-environment }}
-      RUN_COVERAGE: ${{ inputs.run-coverage }}
     strategy:
       fail-fast: false
       matrix:
-        current-environment: ${{fromJson(needs.prepare.outputs.matrix)}}
+        current-environment: ${{ fromJson(needs.prepare.outputs.matrix) }}
     steps:
       - name: Check out source code
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE }}
           aws-region: ${{ inputs.aws-region }}
 
-      - uses: actions/create-github-app-token@v1
+      - name: Set up GitHub App token
         id: app-token
+        uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ inputs.github-app-id }}
           private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
@@ -93,7 +89,6 @@ jobs:
 
       - name: Install python dependencies via uv
         run: |
-          # Check if GIT_TOKEN is set
           if [[ -z "$GIT_TOKEN" ]]; then
             echo "Error: GIT_TOKEN is not set"
             exit 1
@@ -109,60 +104,120 @@ jobs:
           git config --global url."https://github.com/".insteadOf "git@github.com:"
           git config --global url."https://github.com/".insteadOf "ssh://git@github.com"
 
-          cd '${{ inputs.service }}'/src
+          cd "$SERVICE_PATH/src"
           uv sync --all-extras --dev
         env:
           GIT_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      - name: Run python sanity checks for service
+      - name: Python code linting with Ruff
         run: |
-          cd '${{ inputs.service }}'/src
+          cd "$SERVICE_PATH/src"
           uv run ruff check --output-format=github .
 
-      - name: Run tests
-        run: |
-          cd '${{ inputs.service }}'/src
-          if [[ ${{ env.RUN_COVERAGE }} = 'true' ]]; then
-            args='--cov --cov-report xml'
-          else
-            args=''
-          fi
-          uv run pytest $args
-
-      - name: Set NPM registry
+      - name: Set up Node & NPM registry
         uses: actions/setup-node@v4
         with:
-          # cache: 'npm' this caches only the global cache directory, so we need to use cache action to cache node_modules
           node-version: '20'
           registry-url: https://registry.npmjs.org
           scope: '@taxdown'
+          cache: 'npm'
+          cache-dependency-path: |
+            ${{ env.SERVICE_PATH }}/package-lock.json
+            ${{ env.SERVICE_PATH }}/infrastructure/package-lock.json
 
-      - name: Installing service NPM dependencies
-        run: cd '${{ inputs.service }}' && npm ci
+      - name: Install service NPM dependencies
+        run: |
+          cd "$SERVICE_PATH"
+          npm ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Install infrastructure NPM dependencies
-        run: cd '${{ inputs.service }}' && cd infrastructure && npm ci
+        run: |
+          cd "$SERVICE_PATH/infrastructure"
+          npm ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Run build application
-        if: ${{ needs.prepare.outputs.should_release == 'true' }}
-        run: cd '${{ inputs.service }}' && npm run build
-        timeout-minutes: 300
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Lint infrastructure (if present)
+        run: |
+          cd "$SERVICE_PATH"
+          npm run lint:infrastructure --if-present
+      
+      - name: Run service tests
+        run: |
+          cd "$SERVICE_PATH"
+          npm run test:service
 
       - name: Set up QEMU (for ARM emulation)
-        if: ${{ needs.prepare.outputs.should_release == 'true' }}
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
 
-      - name: Deploy the server 🚀
+      - name: Run infra tests (if present)
         if: ${{ needs.prepare.outputs.should_release == 'true' }}
-        run: cd '${{ inputs.service }}' && npm run deploy
+        run: |
+          cd "$SERVICE_PATH"
+          npm run test:infrastructure --if-present
+        env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
+  deploy:
+    name: Deploy 🚀
+    needs: 
+      - prepare
+      - build-and-test
+    runs-on: ubuntu-latest
+    if: ${{ needs.prepare.outputs.should_release == 'true' }}
+    environment:
+      name: ${{ matrix.current-environment }}
+    env:
+      SERVICE_PATH: ${{ inputs.service }}
+      NODE_OPTIONS: --max_old_space_size=7168
+      STAGE: ${{ matrix.current-environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        current-environment: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Set up GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ inputs.github-app-id }}
+          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Set up Node & NPM registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: https://registry.npmjs.org
+          scope: '@taxdown'
+          cache: 'npm'
+          cache-dependency-path: |
+            ${{ env.SERVICE_PATH }}/package-lock.json
+            ${{ env.SERVICE_PATH }}/infrastructure/package-lock.json
+
+      - name: Set up QEMU (for ARM emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Deploy
+        run: |
+          cd "$SERVICE_PATH"
+          npm run deploy
         env:
           GIT_TOKEN: ${{ steps.app-token.outputs.token }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
