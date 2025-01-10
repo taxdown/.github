@@ -175,7 +175,7 @@ jobs:
           path: ${{ inputs.service }}/src/coverage.xml
 
       - name: Download artifact
-        uses: dawidd6/action-download-artifact@v2
+        uses: dawidd6/action-download-artifact@v6
         if: ${{ env.RUN_COVERAGE == 'true' }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
