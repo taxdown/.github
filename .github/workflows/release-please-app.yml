@@ -7,6 +7,11 @@ on:
         description: 'The ID of the GitHub App to authenticate as when using release-please'
         required: true
         type: string
+      MONOREPO_TAGS_ENABLED:
+        description: 'Whether to enable monorepo tags'
+        required: false
+        default: true
+        type: boolean
     secrets:
       GITHUB_APP_PRIVATE_KEY:
         description: 'The private key of the GitHub App to authenticate as when using release-please'
@@ -29,5 +34,5 @@ jobs:
         id: release
         with:
           command: manifest
-          monorepo-tags: true
+          monorepo-tags: ${{ inputs.MONOREPO_TAGS_ENABLED }}
           token: ${{ steps.app-token.outputs.token }}
