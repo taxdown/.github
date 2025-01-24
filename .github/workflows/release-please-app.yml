@@ -33,6 +33,5 @@ jobs:
       - uses: googleapis/release-please-action@v4
         id: release
         with:
-          command: manifest
-          monorepo-tags: ${{ inputs.MONOREPO_TAGS_ENABLED }}
+          include-component-in-tag: ${{ inputs.MONOREPO_TAGS_ENABLED }}
           token: ${{ steps.app-token.outputs.token }}
