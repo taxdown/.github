@@ -24,11 +24,6 @@ on:
         required: false
         type: string
         default: master
-      run-coverage:
-        description: 'Run coverage of the tests'
-        required: false
-        type: boolean
-        default: false
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
@@ -67,7 +62,6 @@ jobs:
       NODE_OPTIONS: --max_old_space_size=7168
       STAGE: ${{ matrix.current-environment }}
       GIT_SSH_KEY: ${{ secrets.GIT_SSH_KEY }}
-      RUN_COVERAGE: ${{ inputs.run-coverage }}
     strategy:
       fail-fast: false
       matrix:
@@ -139,12 +133,7 @@ jobs:
       - name: Run tests
         run: |
           cd '${{ inputs.service }}'/src
-          if [[ ${{ env.RUN_COVERAGE }} = 'true' ]]; then
-            args='--cov --cov-report xml'
-          else
-            args=''
-          fi
-          poetry run python -m pytest $args
+          poetry run python -m pytest
 
       - name: Run build application
         if: ${{ needs.prepare.outputs.should_release == 'true' }}
