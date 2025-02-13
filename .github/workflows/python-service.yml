@@ -111,6 +111,7 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: false
           installer-parallel: true
+          version: 1.8.5
 
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
