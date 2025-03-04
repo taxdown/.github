@@ -41,7 +41,7 @@ jobs:
       - name: Run additional python checks
         run: |
           cd '${{ inputs.library }}'
-          uv run mypy --ignore-missing-imports --scripts-are-modules -m taxdown
+          uv run mypy --ignore-missing-imports --scripts-are-modules --package taxdown
 
       - name: Run tests
         run: |
