@@ -1,0 +1,155 @@
+name: Handle python service build and deploy on monorepo CI from shared workflow
+
+on:
+  workflow_call:
+    inputs:
+      aws-region:
+        description: 'AWS region for building and deploy'
+        required: true
+        type: string
+      service:
+        description: 'Service of the monorepo'
+        required: true
+        type: string
+      main-branch:
+        description: 'Main branch of the monorepo'
+        required: false
+        type: string
+        default: main
+      node-version:
+        description: 'Node version for compiling'
+        required: true
+        type: string
+      github-app-id:
+        description: 'Github app id'
+        type: string
+        required: true
+    secrets:
+      AWS_DEPLOYMENT_ROLE:
+        required: true
+      NPM_TOKEN:
+        required: true
+      GITHUB_APP_PRIVATE_KEY:
+        required: true
+
+jobs:
+  prepare:
+    name: Prepare the building matrix based on branch and tags
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-environments.outputs.matrix }}
+      should_release: ${{ steps.set-environments.outputs.should_release }}
+    steps:
+      - id: set-environments
+        run: |
+          if [[ "$GITHUB_REF" == refs/heads/${{inputs.main-branch}} ]] ; then
+              echo "matrix=[\"dev\",\"staging\"]" >> $GITHUB_OUTPUT
+              echo "should_release=true" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF" == refs/tags/${{inputs.service}}-v* ]] ; then
+              echo "matrix=[\"prod\"]" >> $GITHUB_OUTPUT
+              echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+              echo "matrix=[\"staging\"]" >> $GITHUB_OUTPUT
+              echo "should_release=false" >> $GITHUB_OUTPUT
+          fi
+  build-test-deploy:
+    name: Build & Test & (Sometimes) Deploy (Python + Infra) 🔨
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ matrix.current-environment }}
+    env:
+      SERVICE_PATH: ${{ inputs.service }}
+      NODE_OPTIONS: --max_old_space_size=7168
+      STAGE: ${{ matrix.current-environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        current-environment: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Set up GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ inputs.github-app-id }}
+          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Setup credentials for git
+        run: |
+          if [[ -z "$GIT_TOKEN" ]]; then
+            echo "Error: GIT_TOKEN is not set"
+            exit 1
+          fi
+
+          # Set GIT_ASKPASS to handle Git authentication
+          export GIT_ASKPASS=/tmp/.git-askpass
+          echo 'echo $GIT_TOKEN' > $GIT_ASKPASS
+          chmod +x $GIT_ASKPASS
+
+          # Configure Git to use HTTPS with the token
+          git config --global url."https://github.com/".insteadOf "https://github.com/"
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git config --global url."https://github.com/".insteadOf "ssh://git@github.com"
+        env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up Node & NPM registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: https://registry.npmjs.org
+          scope: '@taxdown'
+          cache: 'npm'
+          cache-dependency-path: |
+            ${{ env.SERVICE_PATH }}/package-lock.json
+            ${{ env.SERVICE_PATH }}/infrastructure/package-lock.json
+
+      - name: Set up QEMU (for ARM emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Install service dependencies
+        run: |
+          cd "$SERVICE_PATH"
+          npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Check linting in service
+        run: |
+          cd "$SERVICE_PATH"
+          npm run lint
+
+      - name: Run tests
+        run: |
+          cd "$SERVICE_PATH"
+          npm run test
+        env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: 🚀 Deploy service
+        if: ${{ needs.prepare.outputs.should_release == 'true' }}
+        run: |
+          cd "$SERVICE_PATH"
+          npm run deploy
+        env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
