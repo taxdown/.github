@@ -120,6 +120,7 @@ jobs:
           cd "$SERVICE_PATH"
           npm ci
         env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Check linting in service
@@ -131,6 +132,8 @@ jobs:
         run: |
           cd "$SERVICE_PATH"
           npm run test
+        env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: 🚀 Deploy service
         if: ${{ needs.prepare.outputs.should_release == 'true' }}
@@ -138,4 +141,5 @@ jobs:
           cd "$SERVICE_PATH"
           npm run deploy
         env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
