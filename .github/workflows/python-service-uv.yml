@@ -91,24 +91,13 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Setup credentials for git
+      - name: Configure Git authentication
         run: |
-          if [[ -z "$GIT_TOKEN" ]]; then
-            echo "Error: GIT_TOKEN is not set"
-            exit 1
-          fi
-
-          # Set GIT_ASKPASS to handle Git authentication
-          export GIT_ASKPASS=/tmp/.git-askpass
-          echo 'echo $GIT_TOKEN' > $GIT_ASKPASS
-          chmod +x $GIT_ASKPASS
-
-          # Configure Git to use HTTPS with the token
-          git config --global url."https://github.com/".insteadOf "https://github.com/"
-          git config --global url."https://github.com/".insteadOf "git@github.com:"
-          git config --global url."https://github.com/".insteadOf "ssh://git@github.com"
-        env:
-          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
+          git config --global credential.helper store
+          echo "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com" > ~/.git-credentials
+          git config --global --add url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "https://github.com/"
+          git config --global --add url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "git@github.com:"
+          git config --global --add url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "ssh://git@github.com"
 
       - name: Set up Node & NPM registry
         uses: actions/setup-node@v4
@@ -131,7 +120,6 @@ jobs:
           cd "$SERVICE_PATH"
           npm ci
         env:
-          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Check linting in service
@@ -143,8 +131,6 @@ jobs:
         run: |
           cd "$SERVICE_PATH"
           npm run test
-        env:
-          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: 🚀 Deploy service
         if: ${{ needs.prepare.outputs.should_release == 'true' }}
@@ -152,5 +138,4 @@ jobs:
           cd "$SERVICE_PATH"
           npm run deploy
         env:
-          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
