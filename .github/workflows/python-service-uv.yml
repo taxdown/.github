@@ -131,6 +131,7 @@ jobs:
           cd "$SERVICE_PATH"
           npm ci
         env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Check linting in service
