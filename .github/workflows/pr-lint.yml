@@ -13,14 +13,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          # https://www.conventionalcommits.org/en/v1.0.0/#specification
           types: |
-            chore
-            docs
             feat
             fix
-            perf
-            refactor
+            build
+            chore
+            ci
+            docs
             style
+            refactor
+            perf
             test
           scopes: |
             core
