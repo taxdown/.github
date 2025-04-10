@@ -12,9 +12,7 @@ on:
         required: true
         type: string
     secrets:
-      AWS_ACCESS_KEY_ID:
-        required: true
-      AWS_SECRET_ACCESS_KEY:
+      AWS_DEPLOYMENT_ROLE:
         required: true
       NPM_TOKEN:
         required: true
@@ -63,10 +61,9 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE }}
           aws-region: ${{ inputs.aws-region }}
 
       - name: Set NPM registry
@@ -88,17 +85,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_CI_SECRET_ACCESS_KEY }}
 
       - name: Run linter
         run: npm run lint
 
       - name: Run tests
         run: npm run test
-        env:
-          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_CI_SECRET_ACCESS_KEY }}
 
       - name: Deploy the server 🚀
         run: npm run deploy
-        env:
-          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_CI_SECRET_ACCESS_KEY }}
