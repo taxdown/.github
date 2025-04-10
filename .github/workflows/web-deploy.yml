@@ -1,5 +1,10 @@
 name: Handle web build and deploy 🌐
 
+
+permissions:
+  id-token: write
+  contents: read   
+
 on:
   workflow_call:
     inputs:
