@@ -1,0 +1,25 @@
+name: 'Load SSM Parameter'
+description: 'Load a parameter from AWS SSM and set it as an environment variable'
+
+inputs:
+  ssm-parameter-name:
+    description: 'Name of the SSM parameter to retrieve'
+    required: true
+  env-variable-name:
+    description: 'Name of the environment variable to set'
+    required: true
+  region:
+    description: 'AWS region where the parameter is stored'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Load SSM Parameter
+      shell: bash
+      run: |
+        set +x
+        value=$(aws ssm get-parameter --name "${{ inputs.ssm-parameter-name }}" --region "${{ inputs.region }}" --with-decryption --query "Parameter.Value" --output text)
+        echo "::add-mask::$value"
+        echo "${{ inputs.env-variable-name }}=$value" >> $GITHUB_ENV
+        unset value 
