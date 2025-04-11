@@ -1,0 +1,66 @@
+name: 'Load SSM Parameter'
+description: 'Load a parameter from AWS SSM and set it as an environment variable'
+
+inputs:
+  ssm-parameter-name:
+    description: 'Name of the SSM parameter to retrieve'
+    required: true
+  env-variable-name:
+    description: 'Name of the environment variable to set'
+    required: true
+  region:
+    description: 'AWS region where the parameter is stored'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate Inputs
+      shell: bash
+      run: |
+        # Validate SSM parameter name format
+        if ! [[ "${{ inputs.ssm-parameter-name }}" =~ ^/[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)*$ ]]; then
+          echo "::error::Invalid SSM parameter name format. Must start with / and contain only alphanumeric characters, dots, hyphens, and underscores"
+          exit 1
+        fi
+
+        # Validate environment variable name format
+        if ! [[ "${{ inputs.env-variable-name }}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+          echo "::error::Invalid environment variable name format. Must start with a letter or underscore and contain only alphanumeric characters and underscores"
+          exit 1
+        fi
+
+        # Validate AWS region format
+        if ! [[ "${{ inputs.region }}" =~ ^[a-z]{2}-[a-z]+-[0-9]+$ ]]; then
+          echo "::error::Invalid AWS region format. Must match pattern like us-east-1, eu-west-1, etc."
+          exit 1
+        fi
+
+    - name: Load SSM Parameter
+      shell: bash
+      run: |
+        set +x
+        # Get the parameter value and handle newlines properly
+        if ! value=$(aws ssm get-parameter --name "${{ inputs.ssm-parameter-name }}" --region "${{ inputs.region }}" --with-decryption --query "Parameter.Value" --output text 2>&1); then
+          echo "::error::Failed to get SSM parameter: $value"
+          exit 1
+        fi
+        
+        if [ -z "$value" ]; then
+          echo "::error::SSM parameter value is empty"
+          exit 1
+        fi
+
+        # Mask each line of the value separately
+        while IFS= read -r line; do
+          echo "::add-mask::$line"
+        done <<< "$value"
+        
+        # Set the environment variable with proper newline handling
+        {
+          echo "${{ inputs.env-variable-name }}<<EOF"
+          echo "$value"
+          echo "EOF"
+        } >> $GITHUB_ENV
+        
+        unset value 
