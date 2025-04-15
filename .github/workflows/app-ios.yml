@@ -101,13 +101,13 @@ jobs:
     env:
       STAGE: ${{ needs.prepare.outputs.environment }}
     steps:
-      - name: Set up ssh key for GitHub certificates repository access
-        uses: webfactory/ssh-agent@v0.7.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_KEY }}
-
       - name: Check out source code
         uses: actions/checkout@v3
+
+      - name: Set up ssh key for GitHub
+        uses: ./.github/actions/setup-github-ssh
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
 
       - name: Set up Ruby and install Gems with cache
         uses: ruby/setup-ruby@v1
