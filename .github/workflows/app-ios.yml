@@ -101,24 +101,10 @@ jobs:
     env:
       STAGE: ${{ needs.prepare.outputs.environment }}
     steps:
-      - name: Set up ssh key for GitHub certificates repository access
-        run: |
-          # Create temporary directory for SSH socket
-          SSH_SOCKET_DIR=$(mktemp -d)
-          SSH_SOCKET="$SSH_SOCKET_DIR/agent.sock"
-          
-          # Start SSH agent with temporary socket
-          eval "$(ssh-agent -a $SSH_SOCKET)"
-          
-          # Add SSH key without exposing it in logs
-          # The key is passed directly to ssh-add without being logged
-          : | SSH_ASKPASS=/bin/false DISPLAY= ssh-add - <<< "${{ secrets.SSH_KEY }}"
-          
-          # Configure known_hosts for GitHub
-          ssh-keyscan github.com > "$SSH_SOCKET_DIR/known_hosts"
-          
-          # Configure Git to use SSH for subsequent steps
-          git config --global url."git@github.com:".insteadOf "https://github.com/"
+      - name: Set up ssh key for GitHub
+        uses: ./.github/actions/setup-github-ssh
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
 
       - name: Check out source code
         uses: actions/checkout@v3
