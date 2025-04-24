@@ -20,6 +20,21 @@ on:
         description: 'Github app id'
         type: string
         required: true
+      main-environments:
+        description: 'Environments to deploy on main branch'
+        required: false
+        default: '[\"dev\",\"staging\"]'
+        type: string
+      tags-environments:
+        description: 'Environments to deploy on tags'
+        required: false
+        default: '[\"prod\"]'
+        type: string
+      every-push-environments:
+        description: 'Environments to deploy on every push'
+        required: false
+        default: '[\"dev\"]'
+        type: string
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
@@ -39,13 +54,16 @@ jobs:
       - id: set-environments
         run: |
           if [[ "$GITHUB_REF" == refs/heads/${{inputs.main-branch}} ]] ; then
-              echo "matrix=[\"dev\",\"staging\"]" >> $GITHUB_OUTPUT
+              echo "matrix=${{inputs.main-environments}}" >> $GITHUB_OUTPUT
               echo "should_release=true" >> $GITHUB_OUTPUT
           elif [[ "$GITHUB_REF" == refs/tags/${{inputs.service}}-v* ]] ; then
-              echo "matrix=[\"prod\"]" >> $GITHUB_OUTPUT
+              echo "matrix=${{inputs.tags-environments}}" >> $GITHUB_OUTPUT
               echo "should_release=true" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "matrix=${{inputs.every-push-environments}}" >> $GITHUB_OUTPUT
           else
-              echo "matrix=[\"staging\"]" >> $GITHUB_OUTPUT
+              echo "matrix=${{inputs.every-push-environments}}" >> $GITHUB_OUTPUT
               echo "should_release=false" >> $GITHUB_OUTPUT
           fi
   build-and-test:
