@@ -44,6 +44,9 @@ jobs:
           elif [[ "$GITHUB_REF" == refs/tags/${{inputs.service}}-v* ]] ; then
               echo "matrix=[\"prod\"]" >> $GITHUB_OUTPUT
               echo "should_release=true" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "matrix=[\"dev\"]" >> $GITHUB_OUTPUT
           else
               echo "matrix=[\"staging\"]" >> $GITHUB_OUTPUT
               echo "should_release=false" >> $GITHUB_OUTPUT
