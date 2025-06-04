@@ -37,11 +37,14 @@ jobs:
       should_release: ${{ steps.set-environments.outputs.should_release }}
     steps:
       - id: set-environments
+        env:
+          MAIN_BRANCH: ${{ inputs.main-branch }}
+          SERVICE_NAME: ${{ inputs.service }}
         run: |
-          if [[ "$GITHUB_REF" == refs/heads/${{inputs.main-branch}} ]] ; then
+          if [[ "$GITHUB_REF" == "refs/heads/$MAIN_BRANCH" ]] ; then
               echo "matrix=[\"dev\",\"staging\"]" >> $GITHUB_OUTPUT
               echo "should_release=true" >> $GITHUB_OUTPUT
-          elif [[ "$GITHUB_REF" == refs/tags/${{inputs.service}}-v* ]] ; then
+          elif [[ "$GITHUB_REF" == "refs/tags/$SERVICE_NAME-v"* ]] ; then
               echo "matrix=[\"prod\"]" >> $GITHUB_OUTPUT
               echo "should_release=true" >> $GITHUB_OUTPUT
           else
@@ -57,7 +60,7 @@ jobs:
     env:
       NODE_OPTIONS: --max_old_space_size=7168
       STAGE: ${{ matrix.current-environment }}
-      GIT_SSH_KEY: ${{ secrets.GIT_SSH_KEY }}
+      SERVICE_NAME: ${{ inputs.service }}
     strategy:
       fail-fast: false
       matrix:
@@ -80,7 +83,8 @@ jobs:
           scope: '@taxdown'
 
       - name: Installing NPM dependencies
-        run: cd '${{ inputs.service }}' && npm ci
+        working-directory: ${{ env.SERVICE_NAME }}
+        run: npm ci
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -110,38 +114,40 @@ jobs:
           poetry config installer.parallel true
 
       - name: Install SSH key
-        if: ${{ env.GIT_SSH_KEY != '' }}
+        if: ${{ secrets.GIT_SSH_KEY != '' }}
+        env:
+          SSH_KEY: ${{ secrets.GIT_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.GIT_SSH_KEY }}" > ~/.ssh/id_rsa
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan github.com >> ~/.ssh/known_hosts
 
       - name: Install python dependencies via poetry
-        run: cd '${{ inputs.service }}'/src && poetry install
+        working-directory: ${{ env.SERVICE_NAME }}/src
+        run: poetry install
 
       - name: Run python sanity checks for service
-        run: |
-          cd '${{ inputs.service }}'/src
-          poetry run ruff check --output-format=github .
+        working-directory: ${{ env.SERVICE_NAME }}/src
+        run: poetry run ruff check --output-format=github .
 
       - name: Run additional python checks
-        run: |
-          cd '${{ inputs.service }}'/src
-          poetry run mypy --ignore-missing-imports --scripts-are-modules -m taxdown
+        working-directory: ${{ env.SERVICE_NAME }}/src
+        run: poetry run mypy --ignore-missing-imports --scripts-are-modules -m taxdown
 
       - name: Run tests
-        run: |
-          cd '${{ inputs.service }}'/src
-          poetry run python -m pytest
+        working-directory: ${{ env.SERVICE_NAME }}/src
+        run: poetry run python -m pytest
 
       - name: Run build application
         if: ${{ needs.prepare.outputs.should_release == 'true' }}
-        run: cd '${{ inputs.service }}' && npm run build
+        working-directory: ${{ env.SERVICE_NAME }}
+        run: npm run build
         timeout-minutes: 300
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Deploy the server 🚀
         if: ${{ needs.prepare.outputs.should_release == 'true' }}
-        run: cd '${{ inputs.service }}' && npm run deploy
+        working-directory: ${{ env.SERVICE_NAME }}
+        run: npm run deploy
