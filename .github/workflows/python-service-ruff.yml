@@ -114,9 +114,9 @@ jobs:
           poetry config installer.parallel true
 
       - name: Install SSH key
-        if: ${{ secrets.GIT_SSH_KEY != '' }}
         env:
           SSH_KEY: ${{ secrets.GIT_SSH_KEY }}
+        if: ${{ env.SSH_KEY != '' }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_rsa
