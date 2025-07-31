@@ -70,7 +70,7 @@ jobs:
           scope: '@taxdown'
 
       - name: Installing NPM dependencies on production mode
-        run: npm ci --ignore-scripts
+        run: npm ci
         env:
           # NODE_ENV: production # disabled until we figure out a way of making the build deps (esbuild, glob, typescript, etc.) to load
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
