@@ -143,31 +143,20 @@ jobs:
           GIT_TOKEN: ${{ steps.app-token.outputs.token }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Run linting (agnostic via npm)
+      - name: Run linting
         run: |
           cd "$SERVICE_PATH"
           npm run lint
         env:
           GIT_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      - name: Run tests (agnostic via npm)
+      - name: Run tests
         run: |
           cd "$SERVICE_PATH"
           npm run test
         env:
           GIT_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      - name: Upload build artifacts (if needed)
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: build-artifacts-${{ github.run_id }}-${{ matrix.stage }}
-          path: |
-            ${{ env.SERVICE_PATH }}/dist
-            ${{ env.SERVICE_PATH }}/build
-            ${{ env.SERVICE_PATH }}/.next
-          retention-days: 1
-          if-no-files-found: ignore
 
   deploy:
     name: Deploy 🚀 (${{ matrix.deployment.name }} - ${{ matrix.stage }})
@@ -235,13 +224,6 @@ jobs:
         with:
           platforms: arm64
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts-${{ github.run_id }}-${{ matrix.stage }}
-          path: .
-        continue-on-error: true
-
       - name: Install service dependencies
         run: |
           cd "$SERVICE_PATH"
@@ -259,7 +241,7 @@ jobs:
           echo "  - STAGE=${{ matrix.stage }} (inferred from branch/tag)"
           echo '${{ toJson(matrix.deployment.env) }}' | jq -r 'to_entries[] | "  - \(.key)=\(.value)"'
 
-      - name: Deploy ${{ matrix.deployment.name }} to ${{ matrix.stage }} (agnostic via npm)
+      - name: Deploy ${{ matrix.deployment.name }} to ${{ matrix.stage }}
         run: |
           cd "$SERVICE_PATH"
           echo "🚀 Deploying ${{ matrix.deployment.name }} to stage: ${{ matrix.stage }}"
