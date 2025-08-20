@@ -1,0 +1,269 @@
+name: Handle python service build and deploy on monorepo CI with multiple deployments support
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: 'Service of the monorepo'
+        required: true
+        type: string
+      main-branch:
+        description: 'Main branch of the monorepo'
+        required: false
+        type: string
+        default: main
+      node-version:
+        description: 'Node version for compiling'
+        required: true
+        type: string
+      github-app-id:
+        description: 'Github app id'
+        type: string
+        required: true
+      deployments:
+        description: |
+          JSON array of deployment configurations. Each deployment must have:
+          - "name": deployment identifier
+          - "aws-region": AWS region for this deployment
+          - "env" (optional): additional environment variables
+          STAGE is always inferred from branch/tag and should NOT be passed in env.
+          Examples:
+          - By country: '[{"name": "spain", "aws-region": "eu-west-1", "env": {"COUNTRY": "ES"}}, {"name": "mexico", "aws-region": "us-east-1", "env": {"COUNTRY": "MX"}}]'
+          - Single region: '[{"name": "default", "aws-region": "us-east-1"}]'
+        required: true
+        type: string
+    secrets:
+      AWS_DEPLOYMENT_ROLE:
+        required: true
+      NPM_TOKEN:
+        required: true
+      GITHUB_APP_PRIVATE_KEY:
+        required: true
+
+jobs:
+  prepare:
+    name: Prepare deployment matrix based on branch, tags, and inputs
+    runs-on: ubuntu-latest
+    outputs:
+      deployments: ${{ steps.set-deployments.outputs.deployments }}
+      should_release: ${{ steps.set-deployments.outputs.should_release }}
+      stages: ${{ steps.set-deployments.outputs.stages }}
+    steps:
+      - id: set-deployments
+        run: |
+          # Determine STAGE based on branch/tag (always inferred, never passed)
+          if [[ "$GITHUB_REF" == refs/heads/${{inputs.main-branch}} ]] ; then
+            STAGES='["dev", "staging"]'
+            SHOULD_RELEASE="true"
+            echo "📋 Main branch: stages dev and staging"
+          elif [[ "$GITHUB_REF" == refs/tags/${{inputs.service}}-v* ]] ; then
+            STAGES='["prod"]'
+            SHOULD_RELEASE="true"
+            echo "📋 Production tag: stage prod"
+          elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            STAGES='["dev"]'
+            SHOULD_RELEASE="true"
+            echo "📋 Manual dispatch: stage dev"
+          else
+            STAGES='["staging"]'
+            SHOULD_RELEASE="false"
+            echo "📋 Feature branch: stage staging (tests only)"
+          fi
+          
+          echo "stages=$STAGES" >> $GITHUB_OUTPUT
+          echo "should_release=$SHOULD_RELEASE" >> $GITHUB_OUTPUT
+          
+          # Deployments are required
+          DEPLOYMENTS='${{ inputs.deployments }}'
+          echo "deployments=$DEPLOYMENTS" >> $GITHUB_OUTPUT
+          echo "📋 Using deployments configuration: $DEPLOYMENTS"
+
+  build-and-test:
+    name: Build & Test 🔨
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ matrix.stage }}
+    env:
+      SERVICE_PATH: ${{ inputs.service }}
+      NODE_OPTIONS: --max_old_space_size=7168
+      STAGE: ${{ matrix.stage }}
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: ${{ fromJson(needs.prepare.outputs.stages) }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ inputs.github-app-id }}
+          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Configure Git authentication
+        run: |
+          git config --global credential.helper store
+          echo "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com" > ~/.git-credentials
+          git config --global --add url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "https://github.com/"
+          git config --global --add url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "git@github.com:"
+          git config --global --add url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "ssh://git@github.com"
+
+      - name: Set up Node & NPM registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: https://registry.npmjs.org
+          scope: '@taxdown'
+          cache: 'npm'
+          cache-dependency-path: |
+            ${{ env.SERVICE_PATH }}/package-lock.json
+            ${{ env.SERVICE_PATH }}/infrastructure/package-lock.json
+
+      - name: Set up QEMU (for ARM emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Install service dependencies
+        run: |
+          cd "$SERVICE_PATH"
+          npm ci
+        env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Run linting (agnostic via npm)
+        run: |
+          cd "$SERVICE_PATH"
+          npm run lint
+        env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Run tests (agnostic via npm)
+        run: |
+          cd "$SERVICE_PATH"
+          npm run test
+        env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Upload build artifacts (if needed)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-artifacts-${{ github.run_id }}-${{ matrix.stage }}
+          path: |
+            ${{ env.SERVICE_PATH }}/dist
+            ${{ env.SERVICE_PATH }}/build
+            ${{ env.SERVICE_PATH }}/.next
+          retention-days: 1
+          if-no-files-found: ignore
+
+  deploy:
+    name: Deploy 🚀 (${{ matrix.deployment.name }} - ${{ matrix.stage }})
+    needs: 
+      - prepare
+      - build-and-test
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ matrix.stage }}-${{ matrix.deployment.name }}
+    env:
+      SERVICE_PATH: ${{ inputs.service }}
+      NODE_OPTIONS: --max_old_space_size=7168
+      STAGE: ${{ matrix.stage }}
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: ${{ fromJson(needs.prepare.outputs.stages) }}
+        deployment: ${{ fromJson(needs.prepare.outputs.deployments) }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE }}
+          aws-region: ${{ matrix.deployment.aws-region }}
+
+      - name: Set up GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ inputs.github-app-id }}
+          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Configure Git authentication
+        run: |
+          git config --global credential.helper store
+          echo "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com" > ~/.git-credentials
+          git config --global --add url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "https://github.com/"
+          git config --global --add url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "git@github.com:"
+          git config --global --add url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "ssh://git@github.com"
+
+      - name: Set up Node & NPM registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: https://registry.npmjs.org
+          scope: '@taxdown'
+          cache: 'npm'
+          cache-dependency-path: |
+            ${{ env.SERVICE_PATH }}/package-lock.json
+            ${{ env.SERVICE_PATH }}/infrastructure/package-lock.json
+
+      - name: Set up QEMU (for ARM emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-${{ github.run_id }}-${{ matrix.stage }}
+          path: .
+        continue-on-error: true
+
+      - name: Install service dependencies
+        run: |
+          cd "$SERVICE_PATH"
+          npm ci
+        env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Set deployment environment variables
+        if: ${{ matrix.deployment.env != null }}
+        run: |
+          echo "🔧 Setting additional environment variables for: ${{ matrix.deployment.name }}"
+          echo '${{ toJson(matrix.deployment.env) }}' | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> $GITHUB_ENV
+          echo "📋 Environment variables set:"
+          echo "  - STAGE=${{ matrix.stage }} (inferred from branch/tag)"
+          echo '${{ toJson(matrix.deployment.env) }}' | jq -r 'to_entries[] | "  - \(.key)=\(.value)"'
+
+      - name: Deploy ${{ matrix.deployment.name }} to ${{ matrix.stage }} (agnostic via npm)
+        run: |
+          cd "$SERVICE_PATH"
+          echo "🚀 Deploying ${{ matrix.deployment.name }} to stage: ${{ matrix.stage }}"
+          npm run deploy
+        env:
+          GIT_TOKEN: ${{ steps.app-token.outputs.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
