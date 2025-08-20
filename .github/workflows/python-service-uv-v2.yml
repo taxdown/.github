@@ -164,6 +164,7 @@ jobs:
       - prepare
       - build-and-test
     runs-on: ubuntu-latest
+    if: ${{ needs.prepare.outputs.should_release == 'true' }}
     environment:
       name: ${{ matrix.stage }}-${{ matrix.deployment.name }}
     env:
