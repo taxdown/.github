@@ -88,6 +88,12 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
+      - name: Update submodules
+        uses: ./.github/actions/update-submodules
+        with:
+          strategy: commit
+          token: ${{ steps.app-token.outputs.token }}
+
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:

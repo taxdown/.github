@@ -1,0 +1,37 @@
+name: 'Update Submodules'
+description: 'Update git submodules to their latest commits or tags'
+
+inputs:
+  strategy:
+    description: 'Strategy to use (commit or tag)'
+    required: false
+    default: 'commit'
+  token:
+    description: 'GitHub token for authentication'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Update submodules
+      shell: bash
+      env:
+        GIT_TOKEN: ${{ inputs.token }}
+      run: |
+        echo "Updating submodules using strategy: ${{ inputs.strategy }}"
+        
+        if [[ "${{ inputs.strategy }}" == "tag" ]]; then
+          echo "Configuring submodules to use latest tags..."
+          # Configure each submodule to use the latest tag
+          git submodule foreach --recursive 'git config submodule.$name.update "!git fetch --tags && git checkout \$(git describe --tags --abbrev=0)"'
+          # Update submodules with the new configuration
+          git submodule update --init --recursive --remote
+        else
+          echo "Using default branch tracking..."
+          # Reset to default checkout behavior
+          git submodule foreach --recursive 'git config submodule.$name.update checkout'
+          # Update submodules with default behavior
+          git submodule update --init --recursive --remote
+        fi
+        
+        echo "Submodules updated successfully"
