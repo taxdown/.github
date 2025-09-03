@@ -6,14 +6,29 @@ inputs:
     description: 'Strategy to use (commit or tag)'
     required: false
     default: 'commit'
+  token:
+    description: 'GitHub token for authentication'
+    required: true
 
 runs:
   using: 'composite'
   steps:
     - name: Update submodules
       shell: bash
+      env:
+        GIT_TOKEN: ${{ inputs.token }}
       run: |
         echo "Updating submodules using strategy: ${{ inputs.strategy }}"
+        
+        # Configure Git authentication for this step
+        export GIT_ASKPASS=/tmp/.git-askpass
+        echo 'echo $GIT_TOKEN' > $GIT_ASKPASS
+        chmod +x $GIT_ASKPASS
+        
+        # Configure Git to use HTTPS with the token
+        git config --global url."https://github.com/".insteadOf "https://github.com/"
+        git config --global url."https://github.com/".insteadOf "git@github.com:"
+        git config --global url."https://github.com/".insteadOf "ssh://git@github.com"
         
         if [[ "${{ inputs.strategy }}" == "tag" ]]; then
           echo "Configuring submodules to use latest tags..."

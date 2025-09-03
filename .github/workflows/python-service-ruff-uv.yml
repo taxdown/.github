@@ -97,6 +97,7 @@ jobs:
         uses: taxdown/.github/.github/actions/update-submodules@feat/aar/add-repo-inputs
         with:
           strategy: commit
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
