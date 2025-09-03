@@ -88,16 +88,7 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Setup Git authentication
-        uses: taxdown/.github/.github/actions/setup-git-auth@feat/aar/add-repo-inputs
-        with:
-          token: ${{ steps.app-token.outputs.token }}
 
-      - name: Update submodules
-        uses: taxdown/.github/.github/actions/update-submodules@feat/aar/add-repo-inputs
-        with:
-          strategy: commit
-          token: ${{ steps.app-token.outputs.token }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
