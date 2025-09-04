@@ -97,7 +97,7 @@ jobs:
 
       - name: Update submodules
         if: ${{ inputs.update-submodules }}
-        uses: ./.github/actions/update-submodules
+        uses: taxdown/.github/.github/actions/update-submodules@main
         with:
           strategy: ${{ inputs.submodule-strategy }}
           token: ${{ steps.app-token.outputs.token }}
@@ -220,7 +220,7 @@ jobs:
 
       - name: Update submodules
         if: ${{ inputs.update-submodules }}
-        uses: ./.github/actions/update-submodules
+        uses: taxdown/.github/.github/actions/update-submodules@main
         with:
           strategy: ${{ inputs.submodule-strategy }}
           token: ${{ steps.app-token.outputs.token }}
