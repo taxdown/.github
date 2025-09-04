@@ -22,10 +22,44 @@ runs:
         # Exit on error, undefined variables, and pipe failures
         set -euo pipefail
         
+        # Lock file to prevent race conditions
+        LOCK_FILE="/tmp/git-submodule-update-$$.lock"
+        
+        # Function to acquire lock
+        acquire_lock() {
+          local lock_file="$1"
+          local max_attempts=30
+          local attempt=1
+          
+          while [[ $attempt -le $max_attempts ]]; do
+            if (set -C; echo $$ > "$lock_file") 2>/dev/null; then
+              echo "Lock acquired: $lock_file"
+              return 0
+            fi
+            
+            echo "Waiting for lock... (attempt $attempt/$max_attempts)"
+            sleep 2
+            ((attempt++))
+          done
+          
+          echo "Error: Could not acquire lock after $max_attempts attempts"
+          return 1
+        }
+        
+        # Function to release lock
+        release_lock() {
+          local lock_file="$1"
+          if [[ -f "$lock_file" ]]; then
+            rm -f "$lock_file" 2>/dev/null || true
+            echo "Lock released: $lock_file"
+          fi
+        }
+        
         # Cleanup function to restore original state
         cleanup() {
           echo "Cleaning up..."
           rm -f "$GIT_ASKPASS" 2>/dev/null || true
+          release_lock "$LOCK_FILE"
           # Restore original Git config - clean up only what we set
           git config --global --unset-all url."https://x-access-token:$GIT_TOKEN@github.com/".insteadOf "https://github.com/" 2>/dev/null || true
           git config --global --unset-all url."https://x-access-token:$GIT_TOKEN@github.com/".insteadOf "git@github.com:" 2>/dev/null || true
@@ -34,6 +68,36 @@ runs:
         
         # Set trap to ensure cleanup runs on exit
         trap cleanup EXIT
+        
+        # Acquire lock to prevent race conditions
+        acquire_lock "$LOCK_FILE" || {
+          echo "Error: Failed to acquire lock. Another instance may be running."
+          exit 1
+        }
+        
+        # Proactive cleanup to handle SIGKILL scenarios
+        cleanup_previous_run() {
+          echo "Checking for previous run artifacts..."
+          # Clean up any existing global configurations that might have been left behind
+          git config --global --unset-all url."https://x-access-token:".insteadOf 2>/dev/null || true
+          # Clean up any temporary files from previous runs
+          rm -f /tmp/.git-askpass-* 2>/dev/null || true
+          rm -f /tmp/git-submodule-update-*.lock 2>/dev/null || true
+          echo "Previous run cleanup completed"
+        }
+        
+        # Check for existing configurations before proceeding
+        check_existing_config() {
+          if git config --global --get-all url."https://x-access-token:".insteadOf >/dev/null 2>&1; then
+            echo "Warning: Found existing git config from previous run. Cleaning up..."
+            cleanup_previous_run
+          fi
+        }
+        
+        # Note: SIGKILL cannot be trapped. If the process is killed with SIGKILL,
+        # cleanup won't run. This proactive cleanup handles such scenarios.
+        cleanup_previous_run
+        check_existing_config
         
         # Validate strategy input
         if [[ "$STRATEGY" != "commit" && "$STRATEGY" != "tag" ]]; then
