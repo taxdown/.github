@@ -20,6 +20,16 @@ on:
         description: 'Github app id'
         type: string
         required: true
+      update-submodules:
+        description: 'Whether to update submodules (default: false)'
+        required: false
+        type: boolean
+        default: false
+      submodule-strategy:
+        description: 'Strategy for submodule updates (commit or tag)'
+        required: false
+        type: string
+        default: 'commit'
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
@@ -84,6 +94,13 @@ jobs:
           app-id: ${{ inputs.github-app-id }}
           private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
+
+      - name: Update submodules
+        if: ${{ inputs.update-submodules }}
+        uses: ./.github/actions/update-submodules
+        with:
+          strategy: ${{ inputs.submodule-strategy }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -200,6 +217,13 @@ jobs:
           app-id: ${{ inputs.github-app-id }}
           private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
+
+      - name: Update submodules
+        if: ${{ inputs.update-submodules }}
+        uses: ./.github/actions/update-submodules
+        with:
+          strategy: ${{ inputs.submodule-strategy }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Set up Node & NPM registry
         uses: actions/setup-node@v4
