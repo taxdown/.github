@@ -41,12 +41,18 @@ runs:
           exit 1
         fi
         
+        # Check if submodules exist
+        if [[ ! -f .gitmodules ]]; then
+          echo "No submodules found in this repository"
+          exit 0
+        fi
+        
         echo "Updating submodules using strategy: $STRATEGY"
         
-        # Configure Git authentication for this step
+        # Configure Git authentication for this step with secure permissions
         export GIT_ASKPASS=/tmp/.git-askpass-$$
-        echo 'echo $GIT_TOKEN' > "$GIT_ASKPASS"
-        chmod +x "$GIT_ASKPASS"
+        (umask 077 && echo 'echo $GIT_TOKEN' > "$GIT_ASKPASS")
+        chmod 700 "$GIT_ASKPASS"
         
         # Configure Git to use HTTPS with the token (global config with proper cleanup)
         echo "Configuring Git authentication..."
@@ -72,12 +78,15 @@ runs:
         if [[ "$STRATEGY" == "tag" ]]; then
           echo "Configuring submodules to use latest tags..."
           
+          # Track if any submodule failed to update
+          submodule_failures=0
+          
           # Update submodules to latest tags with proper error handling
           git submodule foreach --recursive '
             echo "Processing submodule: $displaypath"
             git fetch --tags || {
               echo "Warning: Failed to fetch tags for $displaypath"
-              return 0
+              exit 1
             }
             
             latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -85,15 +94,20 @@ runs:
               echo "  Checking out latest tag: $latest_tag"
               git checkout "$latest_tag" || {
                 echo "Error: Failed to checkout tag $latest_tag for $displaypath"
-                return 1
+                exit 1
               }
             else
               echo "  Warning: No tags found for $displaypath, staying on current branch"
+              exit 0
             fi
           ' || {
+            submodule_failures=1
+          }
+          
+          if [[ $submodule_failures -eq 1 ]]; then
             echo "Error: Some submodules failed to update to latest tags"
             exit 1
-          }
+          fi
           
           # Show which tag each submodule moved to
           echo "Submodules updated to latest tags:"
