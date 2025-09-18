@@ -31,9 +31,11 @@ runs:
 
     - name: Configure Git authentication
       shell: bash
+      env:
+        TOKEN: ${{ steps.app-token.outputs.token }}
       run: |
         git config --global credential.helper store
-        echo "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com" > ~/.git-credentials
-        git config --global --add url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "https://github.com/"
-        git config --global --add url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "git@github.com:"
-        git config --global --add url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "ssh://git@github.com"
+        echo "https://x-access-token:$TOKEN@github.com" > ~/.git-credentials
+        git config --global --add url."https://x-access-token:$TOKEN@github.com/".insteadOf "https://github.com/"
+        git config --global --add url."https://x-access-token:$TOKEN@github.com/".insteadOf "git@github.com:"
+        git config --global --add url."https://x-access-token:$TOKEN@github.com/".insteadOf "ssh://git@github.com"
