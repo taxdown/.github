@@ -100,7 +100,7 @@ jobs:
 
       - name: Setup GitHub authentication
         id: github-auth
-        uses: taxdown/.github/.github/actions/setup-github-auth@feat/jmr/python-library-v2-workflow-ty
+        uses: taxdown/.github/.github/actions/setup-github-auth@main
         with:
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
@@ -181,7 +181,7 @@ jobs:
 
       - name: Setup GitHub authentication
         id: github-auth
-        uses: taxdown/.github/.github/actions/setup-github-auth@feat/jmr/python-library-v2-workflow-ty
+        uses: taxdown/.github/.github/actions/setup-github-auth@main
         with:
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
