@@ -31,19 +31,27 @@ jobs:
           enable-cache: true
 
       - name: Install python dependencies via uv
-        run: cd '${{ inputs.library }}' && uv sync --all-extras --dev
+        env:
+          LIBRARY_DIR: ${{ inputs.library }}
+        run: cd "$LIBRARY_DIR" && uv sync --all-extras --dev
 
       - name: Run python sanity checks for library
+        env:
+          LIBRARY_DIR: ${{ inputs.library }}
         run: |
-          cd '${{ inputs.library }}'
+          cd "$LIBRARY_DIR"
           uv run ruff check --output-format=github .
 
       - name: Run additional python checks
+        env:
+          LIBRARY_DIR: ${{ inputs.library }}
         run: |
-          cd '${{ inputs.library }}'
+          cd "$LIBRARY_DIR"
           uv run ty check taxdown
 
       - name: Run tests
+        env:
+          LIBRARY_DIR: ${{ inputs.library }}
         run: |
-          cd '${{ inputs.library }}'
+          cd "$LIBRARY_DIR"
           uv run pytest .
