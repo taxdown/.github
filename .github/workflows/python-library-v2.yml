@@ -1,0 +1,57 @@
+name: Handle python library build and tests on monorepo CI from shared workflow
+
+on:
+  workflow_call:
+    inputs:
+      library:
+        description: 'Library name in the monorepo'
+        required: true
+        type: string
+      python-version:
+        description: 'Python version to run'
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build python library and run tests 🔨
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{inputs.python-version}}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install python dependencies via uv
+        env:
+          LIBRARY_DIR: ${{ inputs.library }}
+        run: cd "$LIBRARY_DIR" && uv sync --all-extras --dev
+
+      - name: Run python sanity checks for library
+        env:
+          LIBRARY_DIR: ${{ inputs.library }}
+        run: |
+          cd "$LIBRARY_DIR"
+          uv run ruff check --output-format=github .
+
+      - name: Run additional python checks
+        env:
+          LIBRARY_DIR: ${{ inputs.library }}
+        run: |
+          cd "$LIBRARY_DIR"
+          uv run ty check taxdown
+
+      - name: Run tests
+        env:
+          LIBRARY_DIR: ${{ inputs.library }}
+        run: |
+          cd "$LIBRARY_DIR"
+          uv run pytest .

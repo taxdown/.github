@@ -1,0 +1,41 @@
+name: 'Setup GitHub Auth'
+description: 'Configures Git authentication using GitHub App token'
+
+inputs:
+  github-app-id:
+    description: 'GitHub App ID'
+    required: true
+  github-app-private-key:
+    description: 'GitHub App private key'
+    required: true
+  repository-owner:
+    description: 'Repository owner'
+    required: false
+    default: ${{ github.repository_owner }}
+
+outputs:
+  token:
+    description: 'Generated GitHub App token'
+    value: ${{ steps.app-token.outputs.token }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up GitHub App token
+      id: app-token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ inputs.github-app-id }}
+        private-key: ${{ inputs.github-app-private-key }}
+        owner: ${{ inputs.repository-owner }}
+
+    - name: Configure Git authentication
+      shell: bash
+      env:
+        TOKEN: ${{ steps.app-token.outputs.token }}
+      run: |
+        git config --global credential.helper store
+        echo "https://x-access-token:$TOKEN@github.com" > ~/.git-credentials
+        git config --global --add url."https://x-access-token:$TOKEN@github.com/".insteadOf "https://github.com/"
+        git config --global --add url."https://x-access-token:$TOKEN@github.com/".insteadOf "git@github.com:"
+        git config --global --add url."https://x-access-token:$TOKEN@github.com/".insteadOf "ssh://git@github.com"
