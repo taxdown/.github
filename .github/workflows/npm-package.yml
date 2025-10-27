@@ -8,6 +8,11 @@ on:
         default: '12' # for backwards compatibility, remove and require version when all workflows updated
         required: false
         type: string
+      package-directory:
+        description: 'Directory containing package.json (defaults to repository root)'
+        default: '.'
+        required: false
+        type: string
     secrets:
       NPM_TOKEN:
         required: true
@@ -16,6 +21,9 @@ jobs:
   build:
     name: Build npm package and run tests 🔨
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.package-directory }}
     env:
       NODE_OPTIONS: --max-old-space-size=8192
     steps:
@@ -52,6 +60,9 @@ jobs:
   deploy:
     name: Deploy npm package 🚀
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.package-directory }}
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     env:
