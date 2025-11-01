@@ -95,6 +95,11 @@ jobs:
       - name: Run tests
         run: cd '${{ inputs.service }}' && npm run test
 
+      - name: Set up QEMU (for ARM emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Deploy the server 🚀
         if: ${{ needs.prepare.outputs.should_release == 'true' }}
         run: cd '${{ inputs.service }}' && npm run deploy
