@@ -15,6 +15,11 @@ on:
         description: 'Service of the monorepo'
         required: true
         type: string
+      enable-arm64-emulation:
+        description: 'Enable ARM64 emulation with QEMU and Docker Buildx'
+        required: false
+        type: boolean
+        default: false
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
@@ -96,11 +101,13 @@ jobs:
         run: cd '${{ inputs.service }}' && npm run test
 
       - name: Set up QEMU (for ARM emulation)
+        if: ${{ inputs.enable-arm64-emulation }}
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
 
       - name: Set up Docker Buildx
+        if: ${{ inputs.enable-arm64-emulation }}
         uses: docker/setup-buildx-action@v3
 
       - name: Deploy the server 🚀
