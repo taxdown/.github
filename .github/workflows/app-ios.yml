@@ -11,6 +11,14 @@ on:
         description: 'Ruby version for compiling'
         required: true
         type: string
+      aws-role-arn:
+        description: 'ARN of AWS IAM role to assume for Firebase configs'
+        required: true
+        type: string
+      aws-region:
+        description: 'AWS region for Secrets Manager'
+        required: true
+        type: string
     secrets:
       APP_STORE_API_KEY:
         required: true
@@ -127,6 +135,18 @@ jobs:
         run: yarn install --frozen-lockfile --network-timeout 600000
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws-role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+          role-session-name: github-actions-ios-${{ github.run_id }}
+
+      - name: Setup Firebase Configs
+        run: yarn setup:firebase
+        env:
+          STAGE: ${{ needs.prepare.outputs.environment }}
 
       - name: Cache Pods
         uses: actions/cache@v3
