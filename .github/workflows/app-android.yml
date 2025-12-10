@@ -36,9 +36,6 @@ on:
         required: true
       FIREBASE_TOKEN:
         required: true
-      NPM_TOKEN:
-        required: true
-
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -73,14 +70,14 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.node-version }}
-          registry-url: https://registry.npmjs.org
+          registry-url: https://npm.pkg.github.com
           scope: '@taxdown'
           cache: 'yarn'
 
       - name: Install NPM dependencies
         run: yarn install --frozen-lockfile --network-timeout 600000
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Running linter
         run: yarn run lint
@@ -124,14 +121,14 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.node-version }}
-          registry-url: https://registry.npmjs.org
+          registry-url: https://npm.pkg.github.com
           scope: '@taxdown'
           cache: 'yarn'
 
       - name: Install NPM dependencies
         run: yarn install --frozen-lockfile --network-timeout 600000
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4

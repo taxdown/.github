@@ -19,8 +19,6 @@ on:
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
-      NPM_TOKEN:
-        required: true
       SENTRY_AUTH_TOKEN:
         required: true
       SERVERLESS_CI_SECRET_ACCESS_KEY:
@@ -76,19 +74,19 @@ jobs:
         with:
           # cache: 'npm' this caches only the global cache directory, so we need to use cache action to cache node_modules
           node-version: ${{ inputs.node-version }}
-          registry-url: https://registry.npmjs.org
+          registry-url: https://npm.pkg.github.com
           scope: '@taxdown'
 
       - name: Installing NPM dependencies
         run: npm ci
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run build application
         run: npm run build
         timeout-minutes: 300
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Run linter

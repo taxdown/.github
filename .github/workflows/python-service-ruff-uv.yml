@@ -33,8 +33,6 @@ on:
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
-      NPM_TOKEN:
-        required: true
       GITHUB_APP_PRIVATE_KEY:
         required: true
 
@@ -138,7 +136,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          registry-url: https://registry.npmjs.org
+          registry-url: https://npm.pkg.github.com
           scope: '@taxdown'
           cache: 'npm'
           cache-dependency-path: |
@@ -150,14 +148,14 @@ jobs:
           cd "$SERVICE_PATH"
           npm ci
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install infrastructure NPM dependencies
         run: |
           cd "$SERVICE_PATH/infrastructure"
           npm ci
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Lint infrastructure (if present)
         run: |
@@ -229,7 +227,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          registry-url: https://registry.npmjs.org
+          registry-url: https://npm.pkg.github.com
           scope: '@taxdown'
           cache: 'npm'
           cache-dependency-path: |
@@ -247,4 +245,4 @@ jobs:
           npm run deploy
         env:
           GIT_TOKEN: ${{ steps.app-token.outputs.token }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

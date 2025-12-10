@@ -35,8 +35,6 @@ on:
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
-      NPM_TOKEN:
-        required: true
       GITHUB_APP_PRIVATE_KEY:
         required: true
 
@@ -114,7 +112,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          registry-url: https://registry.npmjs.org
+          registry-url: https://npm.pkg.github.com
           scope: '@taxdown'
           cache: 'npm'
           cache-dependency-path: |
@@ -132,7 +130,7 @@ jobs:
           npm ci
         env:
           GIT_TOKEN: ${{ steps.github-auth.outputs.token }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run linting
         run: |
@@ -195,7 +193,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          registry-url: https://registry.npmjs.org
+          registry-url: https://npm.pkg.github.com
           scope: '@taxdown'
           cache: 'npm'
           cache-dependency-path: |
@@ -213,7 +211,7 @@ jobs:
           npm ci
         env:
           GIT_TOKEN: ${{ steps.github-auth.outputs.token }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set deployment environment variables
         if: ${{ matrix.deployment.env != null }}
@@ -231,4 +229,4 @@ jobs:
           npm run deploy
         env:
           GIT_TOKEN: ${{ steps.github-auth.outputs.token }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
