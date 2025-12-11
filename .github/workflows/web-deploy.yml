@@ -4,6 +4,7 @@ name: Handle web build and deploy 🌐
 permissions:
   id-token: write
   contents: read   
+  packages: write
 
 on:
   workflow_call:
