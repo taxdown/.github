@@ -25,13 +25,6 @@ jobs:
             refactor
             perf
             test
-          scopes: |
-            core
-            deps
-            deps-dev
-            main
-            master
-            ui
           requireScope: false
           # This example ensures the subject doesn't start with an uppercase character.
           subjectPattern: ^(?![A-Z]).+$
