@@ -1,0 +1,39 @@
+name: Claude Code Review
+
+on:
+  workflow_call:
+    inputs:
+      prompt:
+        description: 'Custom prompt for Claude Code Review'
+        required: true
+        type: string
+
+jobs:
+  claude-review:
+    # Skip bots and draft PRs
+    if: |
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.user.type != 'Bot'
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # Needed for gh pr diff and posting review comments
+      pull-requests: write  # Needed for Claude to comment on PR
+      issues: write         # Needed for Claude to comment on issues
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: ${{ inputs.prompt }}
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://docs.anthropic.com/en/docs/claude-code/sdk#command-line for available options
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh api:*)"'
