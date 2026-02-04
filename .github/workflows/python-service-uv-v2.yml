@@ -32,6 +32,11 @@ on:
           - Single region: '[{"name": "default", "aws-region": "us-east-1"}]'
         required: true
         type: string
+      lfs:
+        description: 'Whether to checkout LFS files'
+        required: false
+        type: boolean
+        default: false
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
@@ -95,6 +100,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+          lfs: ${{ inputs.lfs }}
 
       - name: Setup GitHub authentication
         id: github-auth
@@ -170,6 +176,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+          lfs: ${{ inputs.lfs }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
