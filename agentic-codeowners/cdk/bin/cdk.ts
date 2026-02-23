@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
-import { AgenticCodeownersStack } from '../lib/stack.js';
-import { DeployEnv, validateEnvironment } from '../config/environments.js';
+import { AgenticCodeownersStack } from '../lib/stack';
+import { DeployEnv, validateEnvironment } from '../config/environments';
 
 const app = new cdk.App();
 
-const deployEnvString = process.env.DEPLOY_ENV ?? DeployEnv.STAGING;
+const deployEnvString = process.env.DEPLOY_ENV ?? DeployEnv.DEV;
 const deployEnv = validateEnvironment(deployEnvString);
 
 // eslint-disable-next-line no-new

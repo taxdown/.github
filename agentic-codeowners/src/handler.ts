@@ -1,9 +1,20 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { PullRequestContext } from './github';
-import { process as assessPR } from './processor';
 
 const SUPPORTED_ACTIONS = ['opened', 'synchronize', 'reopened'];
+
+const sm = new SecretsManagerClient({});
+const lambdaClient = new LambdaClient({});
+let webhookSecret: string | undefined;
+
+const loadWebhookSecret = async (): Promise<void> => {
+  if (webhookSecret) return;
+  const { SecretString } = await sm.send(new GetSecretValueCommand({ SecretId: process.env.WEBHOOK_SECRET_NAME! }));
+  webhookSecret = SecretString ?? '';
+};
 
 const verifySignature = (body: string, signature: string, secret: string): boolean => {
   const expected = `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
@@ -11,11 +22,12 @@ const verifySignature = (body: string, signature: string, secret: string): boole
 };
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  await loadWebhookSecret();
+
   const signature = event.headers['x-hub-signature-256'] ?? '';
   const githubEvent = event.headers['x-github-event'] ?? '';
   const body = event.body ?? '';
 
-  const webhookSecret = process.env.WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error('WEBHOOK_SECRET not configured');
     return { statusCode: 500, body: 'Internal server error' };
@@ -62,10 +74,12 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     installationId: installation.id,
   }));
 
-  // Fire and forget — respond 202 immediately to GitHub, process async
-  assessPR(ctx, action).catch(err =>
-    console.error(JSON.stringify({ message: 'Assessment failed', error: String(err), ctx }))
-  );
+  // Invoke processor Lambda asynchronously — respond 202 immediately to GitHub
+  await lambdaClient.send(new InvokeCommand({
+    FunctionName: process.env.PROCESSOR_FUNCTION_NAME!,
+    InvocationType: 'Event',
+    Payload: JSON.stringify({ ctx, action }),
+  }));
 
   return { statusCode: 202, body: 'Accepted' };
 };

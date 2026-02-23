@@ -144,27 +144,53 @@ export const getPullRequestState = async (ctx: PullRequestContext) => {
   return { approvals, requestedReviewers };
 };
 
-export const createCheck = async (
+export const createCheckInProgress = async (ctx: PullRequestContext): Promise<number> => {
+  const octokit = await getInstallationOctokit(ctx.installationId);
+
+  const { data } = await octokit.checks.create({
+    owner: ctx.owner,
+    repo: ctx.repo,
+    name: 'Agentic CODEOWNERS',
+    head_sha: ctx.headSha,
+    status: 'in_progress',
+  });
+
+  return data.id;
+};
+
+export const completeCheck = async (
   ctx: PullRequestContext,
+  checkRunId: number,
   riskLevel: string,
   summary: string
 ): Promise<void> => {
   const octokit = await getInstallationOctokit(ctx.installationId);
 
-  const conclusion = ['very low', 'low'].includes(riskLevel.toLowerCase())
-    ? 'success'
-    : 'neutral';
-
-  await octokit.checks.create({
+  await octokit.checks.update({
     owner: ctx.owner,
     repo: ctx.repo,
-    name: 'Agentic CODEOWNERS',
-    head_sha: ctx.headSha,
+    check_run_id: checkRunId,
     status: 'completed',
-    conclusion,
+    conclusion: 'success',
     output: {
       title: `Risk level: ${riskLevel}`,
       summary,
+    },
+  });
+};
+
+export const failCheck = async (ctx: PullRequestContext, checkRunId: number): Promise<void> => {
+  const octokit = await getInstallationOctokit(ctx.installationId);
+
+  await octokit.checks.update({
+    owner: ctx.owner,
+    repo: ctx.repo,
+    check_run_id: checkRunId,
+    status: 'completed',
+    conclusion: 'failure',
+    output: {
+      title: 'Assessment failed',
+      summary: 'An error occurred during the risk assessment. Check the Lambda logs for details.',
     },
   });
 };
@@ -196,12 +222,30 @@ export const assignReviewers = async (ctx: PullRequestContext, reviewers: string
 export const postComment = async (ctx: PullRequestContext, body: string): Promise<void> => {
   const octokit = await getInstallationOctokit(ctx.installationId);
 
-  await octokit.issues.createComment({
+  const { data: comments } = await octokit.issues.listComments({
     owner: ctx.owner,
     repo: ctx.repo,
     issue_number: ctx.prNumber,
-    body,
+    per_page: 100,
   });
+
+  const existing = comments.find(c => c.body?.includes('## Agentic CODEOWNERS Assessment'));
+
+  if (existing) {
+    await octokit.issues.updateComment({
+      owner: ctx.owner,
+      repo: ctx.repo,
+      comment_id: existing.id,
+      body,
+    });
+  } else {
+    await octokit.issues.createComment({
+      owner: ctx.owner,
+      repo: ctx.repo,
+      issue_number: ctx.prNumber,
+      body,
+    });
+  }
 };
 
 export const dismissApprovals = async (ctx: PullRequestContext): Promise<void> => {

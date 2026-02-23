@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
 import {
   PullRequestContext,
   ChangedFile,
@@ -9,7 +10,9 @@ import {
   getRiskCriteria,
   getCodeowners,
   getPullRequestState,
-  createCheck,
+  createCheckInProgress,
+  completeCheck,
+  failCheck,
   approvePullRequest,
   assignReviewers,
   postComment,
@@ -17,6 +20,20 @@ import {
 } from './github';
 
 export type RiskLevel = 'Very Low' | 'Low' | 'Medium' | 'High';
+
+const sm = new SecretsManagerClient({});
+let secretsLoaded = false;
+
+const loadSecrets = async (): Promise<void> => {
+  if (secretsLoaded) return;
+  const [appPrivateKey, anthropicApiKey] = await Promise.all([
+    sm.send(new GetSecretValueCommand({ SecretId: process.env.APP_PRIVATE_KEY_NAME! })).then(r => r.SecretString ?? ''),
+    sm.send(new GetSecretValueCommand({ SecretId: process.env.ANTHROPIC_API_KEY_NAME! })).then(r => r.SecretString ?? ''),
+  ]);
+  process.env.APP_PRIVATE_KEY = appPrivateKey;
+  process.env.ANTHROPIC_API_KEY = anthropicApiKey;
+  secretsLoaded = true;
+};
 
 interface AssessmentResult {
   riskLevel: RiskLevel;
@@ -83,7 +100,8 @@ Rules:
 `.trim();
 
 const parseAssessment = (response: string, candidates: ReviewerCandidate[], ctx: PullRequestContext): AssessmentResult => {
-  const parsed = JSON.parse(response);
+  const json = response.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const parsed = JSON.parse(json);
   const riskLevel = parsed.riskLevel as RiskLevel;
 
   const reviewersNeeded = riskLevel === 'Medium' ? 1 : riskLevel === 'High' ? 2 : 0;
@@ -117,18 +135,31 @@ ${assessment.reviewers.length > 0
   : 'none — PR auto-approved'}
 `.trim();
 
-export const process = async (ctx: PullRequestContext, action: string): Promise<void> => {
+// Lambda entry point — invoked async by the webhook handler
+export const handler = async (event: { ctx: PullRequestContext; action: string }): Promise<void> => {
+  await loadSecrets();
+  await assess(event.ctx, event.action);
+};
+
+const assess = async (ctx: PullRequestContext, action: string): Promise<void> => {
+  const checkRunId = await createCheckInProgress(ctx);
+
+  try {
+    await assessInner(ctx, action, checkRunId);
+  } catch (err) {
+    console.error('Assessment failed', err);
+    await failCheck(ctx, checkRunId);
+    throw err;
+  }
+};
+
+const assessInner = async (ctx: PullRequestContext, action: string, checkRunId: number): Promise<void> => {
   const [files, riskCriteria, codeowners, { approvals, requestedReviewers }] = await Promise.all([
     getChangedFiles(ctx),
     getRiskCriteria(ctx),
     getCodeowners(ctx),
     getPullRequestState(ctx),
   ]);
-
-  if (requestedReviewers.length >= 2) {
-    console.log('PR already has 2+ reviewers, skipping');
-    return;
-  }
 
   const [diff, candidates] = await Promise.all([
     getDiff(ctx),
@@ -157,13 +188,19 @@ export const process = async (ctx: PullRequestContext, action: string): Promise<
     await dismissApprovals(ctx);
   }
 
+  const alreadyHasReviewers = requestedReviewers.length >= 2;
+
+  const comment = buildComment(assessment);
+
   await Promise.all([
-    createCheck(ctx, assessment.riskLevel, buildComment(assessment)),
-    postComment(ctx, buildComment(assessment)),
-    isAutoApproved && !wasApproved
-      ? approvePullRequest(ctx, assessment.riskLevel)
-      : assessment.reviewers.length > 0
-        ? assignReviewers(ctx, assessment.reviewers)
-        : Promise.resolve(),
+    completeCheck(ctx, checkRunId, assessment.riskLevel, comment),
+    postComment(ctx, comment),
+    alreadyHasReviewers
+      ? Promise.resolve()
+      : isAutoApproved && !wasApproved
+        ? approvePullRequest(ctx, assessment.riskLevel)
+        : assessment.reviewers.length > 0
+          ? assignReviewers(ctx, assessment.reviewers)
+          : Promise.resolve(),
   ]);
 };

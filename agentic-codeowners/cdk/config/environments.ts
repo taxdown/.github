@@ -1,4 +1,5 @@
 export enum DeployEnv {
+  DEV = 'dev',
   STAGING = 'staging',
   PROD = 'prod',
 }
@@ -9,6 +10,9 @@ export interface EnvironmentConfig {
 }
 
 export const ENVIRONMENT_CONFIG: Record<DeployEnv, EnvironmentConfig> = {
+  [DeployEnv.DEV]: {
+    awsRegion: 'eu-west-1',
+  },
   [DeployEnv.STAGING]: {
     awsRegion: 'eu-west-1',
   },

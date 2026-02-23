@@ -8,9 +8,12 @@ import {
   aws_lambda as lambda,
   aws_lambda_nodejs as lambdaNodejs,
   aws_ssm as ssm,
+  aws_secretsmanager as secretsmanager,
+  aws_apigatewayv2 as apigwv2,
+  aws_apigatewayv2_integrations as apigwv2int,
   aws_logs as logs,
 } from 'aws-cdk-lib';
-import { DeployEnv } from '../config/environments.js';
+import { DeployEnv } from '../config/environments';
 
 export interface AgenticCodeownersStackProps extends StackProps {
   deployEnv: DeployEnv;
@@ -22,68 +25,93 @@ export class AgenticCodeownersStack extends Stack {
 
     const { deployEnv } = props;
 
-    // Secrets stored in SSM Parameter Store.
-    // Create these before deploying:
-    //   aws ssm put-parameter --name /agentic-codeowners/<env>/webhook-secret --type SecureString --value <value>
-    //   aws ssm put-parameter --name /agentic-codeowners/<env>/app-id --type String --value <value>
-    //   aws ssm put-parameter --name /agentic-codeowners/<env>/app-private-key --type SecureString --value <value>
-    //   aws ssm put-parameter --name /agentic-codeowners/<env>/anthropic-api-key --type SecureString --value <value>
-    const webhookSecret = ssm.StringParameter.fromSecureStringParameterAttributes(
-      this, 'WebhookSecret', { parameterName: `/agentic-codeowners/${deployEnv}/webhook-secret` },
-    ).stringValue;
-
+    // app-id is not sensitive — stored in SSM as plain String.
     const appId = ssm.StringParameter.fromStringParameterName(
       this, 'AppId', `/agentic-codeowners/${deployEnv}/app-id`,
     ).stringValue;
 
-    const appPrivateKey = ssm.StringParameter.fromSecureStringParameterAttributes(
-      this, 'AppPrivateKey', { parameterName: `/agentic-codeowners/${deployEnv}/app-private-key` },
-    ).stringValue;
+    // Sensitive secrets stored in Secrets Manager.
+    const webhookSecret = secretsmanager.Secret.fromSecretNameV2(
+      this, 'WebhookSecret', `agentic-codeowners/${deployEnv}/webhook-secret`,
+    );
+    const appPrivateKey = secretsmanager.Secret.fromSecretNameV2(
+      this, 'AppPrivateKey', `agentic-codeowners/${deployEnv}/app-private-key`,
+    );
+    const anthropicApiKey = secretsmanager.Secret.fromSecretNameV2(
+      this, 'AnthropicApiKey', `agentic-codeowners/${deployEnv}/anthropic-api-key`,
+    );
 
-    const anthropicApiKey = ssm.StringParameter.fromSecureStringParameterAttributes(
-      this, 'AnthropicApiKey', { parameterName: `/agentic-codeowners/${deployEnv}/anthropic-api-key` },
-    ).stringValue;
+    const bundling = {
+      minify: true,
+      sourceMap: false,
+      externalModules: ['@aws-sdk/*'],
+    };
 
+    // Processor Lambda — does the actual risk assessment (invoked async by webhook handler)
+    const processorHandler = new lambdaNodejs.NodejsFunction(this, 'ProcessorHandler', {
+      entry: path.join(__dirname, '../../src/processor.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
+      timeout: Duration.minutes(3),
+      memorySize: 256,
+      bundling,
+      environment: {
+        DEPLOY_ENV: deployEnv,
+        APP_ID: appId,
+        APP_PRIVATE_KEY_NAME: appPrivateKey.secretName,
+        ANTHROPIC_API_KEY_NAME: anthropicApiKey.secretName,
+      },
+      logRetention: logs.RetentionDays.ONE_MONTH,
+    });
+
+    appPrivateKey.grantRead(processorHandler);
+    anthropicApiKey.grantRead(processorHandler);
+
+    // Webhook Lambda — validates signature and invokes processor async, responds 202 immediately
     const webhookHandler = new lambdaNodejs.NodejsFunction(this, 'WebhookHandler', {
       entry: path.join(__dirname, '../../src/handler.ts'),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_22_X,
       architecture: lambda.Architecture.ARM_64,
-      // Long timeout: the handler returns 202 immediately but Lambda must stay
-      // alive long enough to complete the async assessPR() processing.
-      // TODO: replace with SQS + separate processor Lambda for reliability.
-      timeout: Duration.minutes(3),
-      memorySize: 256,
-      bundling: {
-        minify: true,
-        sourceMap: false,
-        // External modules provided by the Lambda runtime
-        externalModules: [],
-      },
+      timeout: Duration.seconds(10),
+      memorySize: 128,
+      bundling,
       environment: {
         DEPLOY_ENV: deployEnv,
-        WEBHOOK_SECRET: webhookSecret,
-        APP_ID: appId,
-        APP_PRIVATE_KEY: appPrivateKey,
-        ANTHROPIC_API_KEY: anthropicApiKey,
+        WEBHOOK_SECRET_NAME: webhookSecret.secretName,
+        PROCESSOR_FUNCTION_NAME: processorHandler.functionName,
       },
       logRetention: logs.RetentionDays.ONE_MONTH,
     });
 
-    // Lambda Function URL — public HTTPS endpoint.
-    // Authentication is handled by HMAC signature verification inside the handler.
-    const fnUrl = webhookHandler.addFunctionUrl({
-      authType: lambda.FunctionUrlAuthType.NONE,
+    webhookSecret.grantRead(webhookHandler);
+    processorHandler.grantInvoke(webhookHandler);
+
+    // HTTP API Gateway — public HTTPS endpoint
+    const api = new apigwv2.HttpApi(this, 'WebhookApi', {
+      apiName: `agentic-codeowners-${deployEnv}`,
+    });
+
+    api.addRoutes({
+      path: '/webhook',
+      methods: [apigwv2.HttpMethod.POST],
+      integration: new apigwv2int.HttpLambdaIntegration('WebhookIntegration', webhookHandler),
     });
 
     new CfnOutput(this, 'WebhookUrl', {
-      value: fnUrl.url,
+      value: `${api.apiEndpoint}/webhook`,
       description: 'GitHub App webhook URL — configure this in the GitHub App settings',
     });
 
-    new CfnOutput(this, 'FunctionName', {
+    new CfnOutput(this, 'WebhookFunctionName', {
       value: webhookHandler.functionName,
-      description: 'Lambda function name',
+      description: 'Webhook Lambda function name',
+    });
+
+    new CfnOutput(this, 'ProcessorFunctionName', {
+      value: processorHandler.functionName,
+      description: 'Processor Lambda function name',
     });
   }
 }
