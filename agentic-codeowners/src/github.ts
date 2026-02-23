@@ -18,7 +18,7 @@ export interface ChangedFile {
 }
 
 export interface ReviewerCandidate {
-  email: string;
+  username: string;
   commits: number;
 }
 
@@ -64,7 +64,7 @@ export const getCommitHistoryForFiles = async (
   files: string[]
 ): Promise<ReviewerCandidate[]> => {
   const octokit = await getInstallationOctokit(ctx.installationId);
-  const emailCount: Record<string, number> = {};
+  const usernameCount: Record<string, number> = {};
 
   await Promise.all(
     files.map(async path => {
@@ -77,16 +77,16 @@ export const getCommitHistoryForFiles = async (
       });
 
       for (const commit of data) {
-        const email = commit.commit.author?.email;
-        if (email && email !== ctx.author) {
-          emailCount[email] = (emailCount[email] ?? 0) + 1;
+        const username = commit.author?.login;
+        if (username && username !== ctx.author) {
+          usernameCount[username] = (usernameCount[username] ?? 0) + 1;
         }
       }
     })
   );
 
-  return Object.entries(emailCount)
-    .map(([email, commits]) => ({ email, commits }))
+  return Object.entries(usernameCount)
+    .map(([username, commits]) => ({ username, commits }))
     .sort((a, b) => b.commits - a.commits);
 };
 

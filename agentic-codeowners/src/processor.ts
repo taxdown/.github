@@ -26,16 +26,6 @@ interface AssessmentResult {
   action: string;
 }
 
-const EMAIL_TO_GITHUB: Record<string, string> = {
-  'fer@taxdown.es': 'Fernan-Ramos',
-  'uriel@taxdown.es': 'UrielJavier',
-  'raul@taxdown.es': 'rahernande96',
-};
-
-const resolveReviewers = (candidates: ReviewerCandidate[], author: string): string[] =>
-  candidates
-    .map(c => EMAIL_TO_GITHUB[c.email])
-    .filter((username): username is string => Boolean(username) && username !== author);
 
 const buildPrompt = (
   ctx: PullRequestContext,
@@ -69,8 +59,8 @@ ${diff.slice(0, 8000)}${diff.length > 8000 ? '\n... (diff truncated)' : ''}
 
 ## Reviewer Candidates (by git history, last 6 months)
 ${candidates.length > 0
-  ? candidates.map(c => `- ${c.email} (${c.commits} commits)`).join('\n')
-  : 'No git history found for changed files.'}
+  ? candidates.map(c => `- @${c.username} (${c.commits} commits)`).join('\n')
+  : 'No git history found for changed files. Use CODEOWNERS owners for affected paths.'}
 
 ## Instructions
 Based on the risk criteria and changed files, determine the risk level and respond with a JSON object:
@@ -96,11 +86,10 @@ const parseAssessment = (response: string, candidates: ReviewerCandidate[], ctx:
   const parsed = JSON.parse(response);
   const riskLevel = parsed.riskLevel as RiskLevel;
 
-  const resolvedCandidates = resolveReviewers(candidates, ctx.author);
   const reviewersNeeded = riskLevel === 'Medium' ? 1 : riskLevel === 'High' ? 2 : 0;
   const reviewers = parsed.reviewers?.length
     ? parsed.reviewers.filter((r: string) => r !== ctx.author).slice(0, reviewersNeeded)
-    : resolvedCandidates.slice(0, reviewersNeeded);
+    : candidates.map(c => c.username).filter(u => u !== ctx.author).slice(0, reviewersNeeded);
 
   const isAutoApproved = reviewersNeeded === 0;
   const action = isAutoApproved
