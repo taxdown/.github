@@ -1,5 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { PullRequestContext } from './github';
+import { process as assessPR } from './processor';
 
 const SUPPORTED_ACTIONS = ['opened', 'synchronize', 'reopened'];
 
@@ -39,18 +41,31 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     return { statusCode: 200, body: 'Draft PR ignored' };
   }
 
+  const [owner, repo] = repository.full_name.split('/');
+
+  const ctx: PullRequestContext = {
+    owner,
+    repo,
+    prNumber: pr.number,
+    author: pr.user.login,
+    headSha: pr.head.sha,
+    baseSha: pr.base.sha,
+    installationId: installation.id,
+  };
+
   console.log(JSON.stringify({
     event: githubEvent,
     action,
     repo: repository.full_name,
     pr: pr.number,
     author: pr.user.login,
-    installationId: installation?.id,
+    installationId: installation.id,
   }));
 
-  // TODO: enqueue to SQS for async processing
-  // For now, process inline (must complete within GitHub's 10s webhook timeout)
-  // await processor.process({ pr, repository, installation });
+  // Fire and forget — respond 202 immediately to GitHub, process async
+  assessPR(ctx, action).catch(err =>
+    console.error(JSON.stringify({ message: 'Assessment failed', error: String(err), ctx }))
+  );
 
   return { statusCode: 202, body: 'Accepted' };
 };
