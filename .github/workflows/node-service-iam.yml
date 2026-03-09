@@ -15,12 +15,17 @@ on:
         description: 'Service of the monorepo'
         required: true
         type: string
+      architecture:
+        description: 'CPU architecture: x64 (default) or arm64'
+        required: false
+        type: string
+        default: 'x64'
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     outputs:
       matrix: ${{ steps.set-environments.outputs.matrix }}
       should_release: ${{ steps.set-environments.outputs.should_release }}
@@ -44,7 +49,7 @@ jobs:
   build:
     name: Build node service and run tests 🔨
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     environment:
       name: ${{ matrix.current-environment }}
     env:
