@@ -20,6 +20,16 @@ on:
         required: false
         type: string
         default: 'x64'
+      stages:
+        description: 'JSON array of stages to deploy on merge to main'
+        required: false
+        type: string
+        default: '["dev","staging"]'
+      stages-on-dispatch:
+        description: 'JSON array of stages to deploy on workflow_dispatch'
+        required: false
+        type: string
+        default: '["dev"]'
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
@@ -33,14 +43,14 @@ jobs:
       - id: set-environments
         run: |
           if [[ "$GITHUB_REF" == refs/heads/master || "$GITHUB_REF" == refs/heads/main ]] ; then
-              echo "matrix=[\"dev\",\"staging\"]" >> $GITHUB_OUTPUT
+              echo "matrix=${{ inputs.stages }}" >> $GITHUB_OUTPUT
               echo "should_release=true" >> $GITHUB_OUTPUT
           elif [[ "$GITHUB_REF" == refs/tags/${{inputs.service}}-v* ]] ; then
               echo "matrix=[\"prod\"]" >> $GITHUB_OUTPUT
               echo "should_release=true" >> $GITHUB_OUTPUT
           elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
               echo "should_release=true" >> $GITHUB_OUTPUT
-              echo "matrix=[\"dev\"]" >> $GITHUB_OUTPUT
+              echo "matrix=${{ inputs.stages-on-dispatch }}" >> $GITHUB_OUTPUT
           else
               echo "matrix=[\"staging\"]" >> $GITHUB_OUTPUT
               echo "should_release=false" >> $GITHUB_OUTPUT
@@ -61,7 +71,9 @@ jobs:
         current-environment: ${{fromJson(needs.prepare.outputs.matrix)}}
     steps:
       - name: Check out source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -70,7 +82,7 @@ jobs:
           aws-region: ${{ inputs.aws-region }}
 
       - name: Set NPM registry
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
           registry-url: https://npm.pkg.github.com
