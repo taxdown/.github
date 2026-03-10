@@ -43,16 +43,16 @@ jobs:
       - id: set-environments
         run: |
           if [[ "$GITHUB_REF" == refs/heads/master || "$GITHUB_REF" == refs/heads/main ]] ; then
-              echo "matrix=${{ inputs.stages }}" >> $GITHUB_OUTPUT
+              echo 'matrix=${{ inputs.stages }}' >> $GITHUB_OUTPUT
               echo "should_release=true" >> $GITHUB_OUTPUT
           elif [[ "$GITHUB_REF" == refs/tags/${{inputs.service}}-v* ]] ; then
-              echo "matrix=[\"prod\"]" >> $GITHUB_OUTPUT
+              echo 'matrix=["prod"]' >> $GITHUB_OUTPUT
               echo "should_release=true" >> $GITHUB_OUTPUT
           elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
               echo "should_release=true" >> $GITHUB_OUTPUT
-              echo "matrix=${{ inputs.stages-on-dispatch }}" >> $GITHUB_OUTPUT
+              echo 'matrix=${{ inputs.stages-on-dispatch }}' >> $GITHUB_OUTPUT
           else
-              echo "matrix=[\"staging\"]" >> $GITHUB_OUTPUT
+              echo 'matrix=["staging"]' >> $GITHUB_OUTPUT
               echo "should_release=false" >> $GITHUB_OUTPUT
           fi
 
