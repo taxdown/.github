@@ -105,7 +105,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-          lfs: ${{ inputs.lfs }}
 
       - name: Setup GitHub authentication
         id: github-auth
@@ -113,6 +112,12 @@ jobs:
         with:
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Fetch LFS objects
+        if: ${{ inputs.lfs }}
+        run: |
+          git lfs install
+          git lfs pull
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -182,7 +187,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-          lfs: ${{ inputs.lfs }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -196,6 +200,12 @@ jobs:
         with:
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Fetch LFS objects
+        if: ${{ inputs.lfs }}
+        run: |
+          git lfs install
+          git lfs pull
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
