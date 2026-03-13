@@ -32,6 +32,11 @@ on:
           - Single region: '[{"name": "default", "aws-region": "us-east-1"}]'
         required: true
         type: string
+      architecture:
+        description: 'CPU architecture: x64 (default) or arm64'
+        required: false
+        type: string
+        default: 'x64'
       lfs:
         description: 'Whether to checkout LFS files'
         required: false
@@ -46,7 +51,7 @@ on:
 jobs:
   prepare:
     name: Prepare deployment matrix based on branch, tags, and inputs
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     outputs:
       deployments: ${{ steps.set-deployments.outputs.deployments }}
       should_release: ${{ steps.set-deployments.outputs.should_release }}
@@ -84,7 +89,7 @@ jobs:
   build-and-test:
     name: Build & Test 🔨
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     environment:
       name: ${{ matrix.stage }}
     env:
@@ -126,6 +131,7 @@ jobs:
             ${{ env.SERVICE_PATH }}/infrastructure/package-lock.json
 
       - name: Set up QEMU (for ARM emulation)
+        if: ${{ inputs.architecture != 'arm64' }}
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
@@ -158,7 +164,7 @@ jobs:
     needs: 
       - prepare
       - build-and-test
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     if: ${{ needs.prepare.outputs.should_release == 'true' }}
     environment:
       name: ${{ matrix.stage }}-${{ matrix.deployment.name }}
@@ -208,6 +214,7 @@ jobs:
             ${{ env.SERVICE_PATH }}/infrastructure/package-lock.json
 
       - name: Set up QEMU (for ARM emulation)
+        if: ${{ inputs.architecture != 'arm64' }}
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
