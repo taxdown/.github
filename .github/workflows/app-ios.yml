@@ -98,7 +98,7 @@ jobs:
             ios/build/bundle/
 
   deploy:
-    runs-on: macos-14
+    runs-on: macos-15
     name: Build 🔨 the iOs ipa and deploy 🚀 when the branch is one of the environments
     needs: [prepare, build]
     if: ${{ needs.prepare.outputs.should_deploy == 'true' }}
