@@ -163,6 +163,21 @@ jobs:
           name: bundle-ios
           path: ios
 
+      - name: Strip bitcode from vendor frameworks
+        run: |
+          echo "Stripping bitcode from precompiled frameworks in Pods..."
+          find ios/Pods -name "*.framework" -type d | while read framework; do
+            binary_name=$(basename "$framework" .framework)
+            binary_path="$framework/$binary_name"
+            if [ -f "$binary_path" ]; then
+              if otool -l "$binary_path" 2>/dev/null | grep -q __LLVM; then
+                echo "  Stripping: $binary_path"
+                xcrun bitcode_strip "$binary_path" -r -o "$binary_path"
+              fi
+            fi
+          done
+          echo "Done"
+
       - name: Running ios fastlane build
         id: fastlane-build
         run: bundle exec fastlane ios build stage:$STAGE
