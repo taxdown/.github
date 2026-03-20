@@ -149,6 +149,11 @@ jobs:
           java-version: ${{ inputs.java-version }}
           cache: 'gradle'
 
+      - name: Accept Android SDK licenses and install NDK
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;28.0.12433566"
+
       - name: Set up Android Release keystore and Google Cloud service key for Play Console
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
