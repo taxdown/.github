@@ -51,5 +51,10 @@ jobs:
           java-version: ${{ inputs.java-version }}
           cache: 'gradle'
 
+      - name: Accept Android SDK licenses and install NDK
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;28.0.12433566"
+
       - name: Install Gradle dependencies
         run: bundle exec fastlane android install_dependencies
