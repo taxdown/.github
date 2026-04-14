@@ -214,6 +214,13 @@ jobs:
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
 
+      - name: Initialize submodules
+        if: ${{ inputs.update-submodules }}
+        uses: taxdown/.github/.github/actions/update-submodules@main
+        with:
+          strategy: init
+          token: ${{ steps.github-auth.outputs.token }}
+
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
