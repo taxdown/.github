@@ -42,6 +42,16 @@ on:
         required: false
         type: boolean
         default: false
+      update-submodules:
+        description: 'Whether to update submodules (default: false)'
+        required: false
+        type: boolean
+        default: false
+      submodule-strategy:
+        description: 'Strategy for submodule updates: "commit" (latest remote commit) or "tag" (latest tag)'
+        required: false
+        type: string
+        default: 'commit'
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
@@ -60,11 +70,11 @@ jobs:
       - id: set-deployments
         run: |
           # Determine STAGE based on branch/tag (always inferred, never passed)
-          if [[ "$GITHUB_REF" == refs/heads/${{inputs.main-branch}} ]] ; then
+          if [[ "$GITHUB_REF" == "refs/heads/${{inputs.main-branch}}" ]] ; then
             STAGES='["dev", "staging"]'
             SHOULD_RELEASE="true"
             echo "📋 Main branch: stages dev and staging"
-          elif [[ "$GITHUB_REF" == refs/tags/${{inputs.service}}-v* ]] ; then
+          elif [[ "$GITHUB_REF" == "refs/tags/${{inputs.service}}-v"* ]] ; then
             STAGES='["prod"]'
             SHOULD_RELEASE="true"
             echo "📋 Production tag: stage prod"
@@ -78,12 +88,12 @@ jobs:
             echo "📋 Feature branch: stage staging (tests only)"
           fi
           
-          echo "stages=$STAGES" >> $GITHUB_OUTPUT
-          echo "should_release=$SHOULD_RELEASE" >> $GITHUB_OUTPUT
-          
+          echo "stages=$STAGES" >> "$GITHUB_OUTPUT"
+          echo "should_release=$SHOULD_RELEASE" >> "$GITHUB_OUTPUT"
+
           # Deployments are required
           DEPLOYMENTS='${{ inputs.deployments }}'
-          echo "deployments=$DEPLOYMENTS" >> $GITHUB_OUTPUT
+          echo "deployments=$DEPLOYMENTS" >> "$GITHUB_OUTPUT"
           echo "📋 Using deployments configuration: $DEPLOYMENTS"
 
   build-and-test:
@@ -113,6 +123,13 @@ jobs:
         with:
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Update submodules
+        if: ${{ inputs.update-submodules }}
+        uses: taxdown/.github/.github/actions/update-submodules@main
+        with:
+          strategy: ${{ inputs.submodule-strategy }}
+          token: ${{ steps.github-auth.outputs.token }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -197,6 +214,16 @@ jobs:
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
 
+      # Always use "init" in deploy to pin submodules to the exact SHA committed in
+      # the parent repo — guarantees deploy runs the same code that passed tests,
+      # regardless of what has been pushed to the submodule remote since then.
+      - name: Initialize submodules
+        if: ${{ inputs.update-submodules }}
+        uses: taxdown/.github/.github/actions/update-submodules@main
+        with:
+          strategy: init
+          token: ${{ steps.github-auth.outputs.token }}
+
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -231,7 +258,7 @@ jobs:
         if: ${{ matrix.deployment.env != null }}
         run: |
           echo "🔧 Setting additional environment variables for: ${{ matrix.deployment.name }}"
-          echo '${{ toJson(matrix.deployment.env) }}' | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> $GITHUB_ENV
+          echo '${{ toJson(matrix.deployment.env) }}' | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$GITHUB_ENV"
           echo "📋 Environment variables set:"
           echo "  - STAGE=${{ matrix.stage }} (inferred from branch/tag)"
           echo '${{ toJson(matrix.deployment.env) }}' | jq -r 'to_entries[] | "  - \(.key)=\(.value)"'

@@ -3,7 +3,7 @@ description: 'Update git submodules to their latest commits or tags'
 
 inputs:
   strategy:
-    description: 'Strategy to use (commit or tag)'
+    description: 'Strategy to use: "commit" (latest remote commit), "tag" (latest tag), or "init" (pinned revision in parent repo)'
     required: false
     default: 'commit'
   token:
@@ -100,8 +100,8 @@ runs:
         check_existing_config
         
         # Validate strategy input
-        if [[ "$STRATEGY" != "commit" && "$STRATEGY" != "tag" ]]; then
-          echo "Error: Invalid strategy '$STRATEGY'. Must be 'commit' or 'tag'"
+        if [[ "$STRATEGY" != "commit" && "$STRATEGY" != "tag" && "$STRATEGY" != "init" ]]; then
+          echo "Error: Invalid strategy '$STRATEGY'. Must be 'commit', 'tag', or 'init'"
           exit 1
         fi
         
@@ -139,7 +139,20 @@ runs:
           }
         fi
         
-        if [[ "$STRATEGY" == "tag" ]]; then
+        if [[ "$STRATEGY" == "init" ]]; then
+          echo "Checking out pinned revisions from parent repo..."
+
+          git submodule update --init --recursive || {
+            echo "Error: Failed to initialize submodules"
+            exit 1
+          }
+
+          echo "Submodules initialized to pinned revisions:"
+          git submodule foreach --recursive '
+            commit_hash=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+            echo "  - $displaypath: $commit_hash"
+          '
+        elif [[ "$STRATEGY" == "tag" ]]; then
           echo "Configuring submodules to use latest tags..."
           
           # Track if any submodule failed to update
