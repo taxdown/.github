@@ -42,6 +42,16 @@ on:
         required: false
         type: boolean
         default: false
+      update-submodules:
+        description: 'Whether to update submodules (default: false)'
+        required: false
+        type: boolean
+        default: false
+      submodule-strategy:
+        description: 'Strategy for submodule updates: "commit" (latest remote commit) or "tag" (latest tag)'
+        required: false
+        type: string
+        default: 'commit'
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
@@ -113,6 +123,13 @@ jobs:
         with:
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Update submodules
+        if: ${{ inputs.update-submodules }}
+        uses: taxdown/.github/.github/actions/update-submodules@main
+        with:
+          strategy: ${{ inputs.submodule-strategy }}
+          token: ${{ steps.github-auth.outputs.token }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -196,6 +213,13 @@ jobs:
         with:
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Update submodules
+        if: ${{ inputs.update-submodules }}
+        uses: taxdown/.github/.github/actions/update-submodules@main
+        with:
+          strategy: ${{ inputs.submodule-strategy }}
+          token: ${{ steps.github-auth.outputs.token }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
