@@ -126,7 +126,7 @@ jobs:
 
       - name: Update submodules
         if: ${{ inputs.update-submodules }}
-        uses: taxdown/.github/.github/actions/update-submodules@albertoarmijo/dat-1764
+        uses: taxdown/.github/.github/actions/update-submodules@main
         with:
           strategy: ${{ inputs.submodule-strategy }}
           token: ${{ steps.github-auth.outputs.token }}
@@ -219,7 +219,7 @@ jobs:
       # regardless of what has been pushed to the submodule remote since then.
       - name: Initialize submodules
         if: ${{ inputs.update-submodules }}
-        uses: taxdown/.github/.github/actions/update-submodules@albertoarmijo/dat-1764
+        uses: taxdown/.github/.github/actions/update-submodules@main
         with:
           strategy: init
           token: ${{ steps.github-auth.outputs.token }}
