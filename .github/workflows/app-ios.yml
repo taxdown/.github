@@ -107,6 +107,13 @@ jobs:
     env:
       STAGE: ${{ needs.prepare.outputs.environment }}
     steps:
+      # Pin Xcode explicitly: the macos-26 image ships several Xcodes and
+      # GitHub floats the default (26.2 -> 26.4.x -> 26.2). Xcode 26.4's Clang
+      # breaks fmt (consteval) and the Segment pod (private header), so pin
+      # 26.2 -- the toolchain the last successful App Store build shipped with.
+      - name: Select Xcode 26.2
+        run: sudo xcode-select -s /Applications/Xcode_26.2.app
+
       - name: Check out source code
         uses: actions/checkout@v3
 
