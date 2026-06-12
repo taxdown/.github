@@ -141,7 +141,10 @@ jobs:
           name: submodule-lock-${{ matrix.stage }}
           path: ${{ runner.temp }}/submodule-lock.txt
           if-no-files-found: error
-          retention-days: 1
+          # 7 days so a failed deploy can be re-run days later without losing the
+          # lock; overwrite avoids the v4 409 conflict on "re-run all jobs".
+          overwrite: true
+          retention-days: 7
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
