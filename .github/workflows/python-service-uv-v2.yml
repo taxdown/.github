@@ -126,7 +126,7 @@ jobs:
 
       - name: Update submodules
         if: ${{ inputs.update-submodules }}
-        uses: taxdown/.github/.github/actions/update-submodules@albertoarmijo/dat-2370
+        uses: taxdown/.github/.github/actions/update-submodules@main
         with:
           strategy: ${{ inputs.submodule-strategy }}
           token: ${{ steps.github-auth.outputs.token }}
@@ -243,7 +243,7 @@ jobs:
 
       - name: Restore submodules from lock
         if: ${{ inputs.update-submodules }}
-        uses: taxdown/.github/.github/actions/update-submodules@albertoarmijo/dat-2370
+        uses: taxdown/.github/.github/actions/update-submodules@main
         with:
           strategy: locked
           token: ${{ steps.github-auth.outputs.token }}
