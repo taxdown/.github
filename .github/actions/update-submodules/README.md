@@ -14,8 +14,11 @@ GitHub Action to update git submodules with authentication support and flexible 
 
 ## Inputs
 
-- `strategy`: Strategy to use (commit or tag), defaults to 'commit'
+- `strategy`: Strategy to use (`commit`, `tag`, `init`, or `locked`), defaults to `commit`
 - `token`: GitHub token for authentication (required)
+- `lock-file`: Path to a submodule SHA lock file (optional). For `commit`/`tag`/`init`
+  the resolved `<path>\t<sha>` pairs are written here after updating; for `locked` the
+  file is read and each submodule is pinned to its exact SHA.
 
 ## Strategies
 
@@ -29,6 +32,52 @@ strategy: commit
 Updates submodules to their latest tag:
 ```yaml
 strategy: tag
+```
+
+### Init Strategy
+Checks out the revisions pinned (the gitlink) in the parent repository:
+```yaml
+strategy: init
+```
+
+### Locked Strategy
+Checks out each submodule (detached) to the exact SHA recorded in a lock file and
+fails if the resulting HEAD does not match. Pair it with `lock-file` produced by an
+earlier `commit`/`tag` run so a later job deploys the same revision that was tested:
+```yaml
+strategy: locked
+lock-file: ${{ runner.temp }}/submodule-lock.txt
+```
+
+## Persisting SHAs across jobs
+
+To guarantee a `deploy` job uses the exact submodule revisions resolved by
+`build-and-test`, write a lock in the build job, publish it as an artifact, and
+consume it in deploy:
+
+```yaml
+# build-and-test
+- uses: taxdown/.github/.github/actions/update-submodules@main
+  with:
+    strategy: commit
+    token: ${{ steps.app-token.outputs.token }}
+    lock-file: ${{ runner.temp }}/submodule-lock.txt
+- uses: actions/upload-artifact@v4
+  with:
+    name: submodule-lock
+    path: ${{ runner.temp }}/submodule-lock.txt
+    if-no-files-found: error
+
+# deploy
+- uses: actions/download-artifact@v4
+  with:
+    name: submodule-lock
+    path: ${{ runner.temp }}
+- uses: taxdown/.github/.github/actions/update-submodules@main
+  with:
+    strategy: locked
+    token: ${{ steps.app-token.outputs.token }}
+    lock-file: ${{ runner.temp }}/submodule-lock.txt
 ```
 
 ## Technical Design Decisions
