@@ -124,12 +124,34 @@ jobs:
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
 
+      - name: Validate build submodule strategy
+        if: ${{ inputs.update-submodules && inputs.submodule-strategy != 'commit' && inputs.submodule-strategy != 'tag' }}
+        run: |
+          echo "Error: build submodule-strategy must be 'commit' or 'tag' when update-submodules is enabled"
+          echo "Deploy uses the build-generated lock, so 'init' and 'locked' are not valid build strategies here."
+          exit 1
+
       - name: Update submodules
         if: ${{ inputs.update-submodules }}
         uses: taxdown/.github/.github/actions/update-submodules@main
         with:
           strategy: ${{ inputs.submodule-strategy }}
           token: ${{ steps.github-auth.outputs.token }}
+          lock-file: ${{ runner.temp }}/submodule-lock.txt
+
+      # Publish the SHAs resolved above so the deploy job pins the exact same
+      # submodule revisions that were built and tested here (see DAT-2370).
+      - name: Upload submodule lock
+        if: ${{ inputs.update-submodules }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: submodule-lock-${{ matrix.stage }}
+          path: ${{ runner.temp }}/submodule-lock.txt
+          if-no-files-found: error
+          # 7 days so a failed deploy can be re-run days later without losing the
+          # lock; overwrite avoids the v4 409 conflict on "re-run all jobs".
+          overwrite: true
+          retention-days: 7
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -214,15 +236,25 @@ jobs:
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
 
-      # Always use "init" in deploy to pin submodules to the exact SHA committed in
-      # the parent repo — guarantees deploy runs the same code that passed tests,
-      # regardless of what has been pushed to the submodule remote since then.
-      - name: Initialize submodules
+      # Pin submodules to the exact SHAs resolved by build-and-test. The gitlink
+      # committed in the parent repo can lag behind, so relying on it ("init") let
+      # deploy bake a different revision than the one that passed tests (DAT-2370).
+      # download-artifact fails if the lock is missing, so deploy never silently
+      # falls back to a divergent revision.
+      - name: Download submodule lock
+        if: ${{ inputs.update-submodules }}
+        uses: actions/download-artifact@v4
+        with:
+          name: submodule-lock-${{ matrix.stage }}
+          path: ${{ runner.temp }}
+
+      - name: Restore submodules from lock
         if: ${{ inputs.update-submodules }}
         uses: taxdown/.github/.github/actions/update-submodules@main
         with:
-          strategy: init
+          strategy: locked
           token: ${{ steps.github-auth.outputs.token }}
+          lock-file: ${{ runner.temp }}/submodule-lock.txt
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7

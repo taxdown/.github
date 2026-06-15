@@ -3,12 +3,21 @@ description: 'Update git submodules to their latest commits or tags'
 
 inputs:
   strategy:
-    description: 'Strategy to use: "commit" (latest remote commit), "tag" (latest tag), or "init" (pinned revision in parent repo)'
+    description: 'Strategy to use: "commit" (latest remote commit), "tag" (latest tag), "init" (pinned revision in parent repo), or "locked" (exact SHAs from a lock file)'
     required: false
     default: 'commit'
   token:
     description: 'GitHub token for authentication'
     required: true
+  lock-file:
+    description: |
+      Path to a submodule SHA lock file. Behaviour depends on the strategy:
+      - "commit"/"tag"/"init": if set, the resolved "<path>\t<sha>" pairs are written
+        to this file after updating, so a downstream job can pin the exact same SHAs.
+      - "locked": the file is read and each submodule is checked out (detached) to its
+        exact SHA, failing if the resulting HEAD does not match the lock.
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -18,12 +27,13 @@ runs:
       env:
         GIT_TOKEN: ${{ inputs.token }}
         STRATEGY: ${{ inputs.strategy }}
+        LOCK_FILE: ${{ inputs.lock-file }}
       run: |
         # Exit on error, undefined variables, and pipe failures
         set -euo pipefail
         
-        # Lock file to prevent race conditions
-        LOCK_FILE="/tmp/git-submodule-update-$$.lock"
+        # Mutex file to prevent race conditions (distinct from the SHA LOCK_FILE input)
+        MUTEX_FILE="/tmp/git-submodule-update-$$.lock"
         
         # Function to acquire lock
         acquire_lock() {
@@ -59,7 +69,7 @@ runs:
         cleanup() {
           echo "Cleaning up..."
           rm -f "$GIT_ASKPASS" 2>/dev/null || true
-          release_lock "$LOCK_FILE"
+          release_lock "$MUTEX_FILE"
           # Restore original Git config - clean up only what we set
           git config --global --unset-all url."https://x-access-token:$GIT_TOKEN@github.com/".insteadOf "https://github.com/" 2>/dev/null || true
           git config --global --unset-all url."https://x-access-token:$GIT_TOKEN@github.com/".insteadOf "git@github.com:" 2>/dev/null || true
@@ -70,7 +80,7 @@ runs:
         trap cleanup EXIT
         
         # Acquire lock to prevent race conditions
-        acquire_lock "$LOCK_FILE" || {
+        acquire_lock "$MUTEX_FILE" || {
           echo "Error: Failed to acquire lock. Another instance may be running."
           exit 1
         }
@@ -100,14 +110,20 @@ runs:
         check_existing_config
         
         # Validate strategy input
-        if [[ "$STRATEGY" != "commit" && "$STRATEGY" != "tag" && "$STRATEGY" != "init" ]]; then
-          echo "Error: Invalid strategy '$STRATEGY'. Must be 'commit', 'tag', or 'init'"
+        if [[ "$STRATEGY" != "commit" && "$STRATEGY" != "tag" && "$STRATEGY" != "init" && "$STRATEGY" != "locked" ]]; then
+          echo "Error: Invalid strategy '$STRATEGY'. Must be 'commit', 'tag', 'init', or 'locked'"
           exit 1
         fi
-        
+
         # Check if submodules exist
         if [[ ! -f .gitmodules ]]; then
           echo "No submodules found in this repository"
+          # Still emit an (empty) lock when writing, so downstream jobs that always
+          # expect the artifact keep working for repos without submodules.
+          if [[ -n "$LOCK_FILE" && "$STRATEGY" != "locked" ]]; then
+            : > "$LOCK_FILE"
+            echo "Wrote empty submodule lock to $LOCK_FILE"
+          fi
           exit 0
         fi
         
@@ -139,7 +155,71 @@ runs:
           }
         fi
         
-        if [[ "$STRATEGY" == "init" ]]; then
+        if [[ "$STRATEGY" == "locked" ]]; then
+          echo "Restoring submodules from lock file..."
+
+          if [[ -z "$LOCK_FILE" ]]; then
+            echo "Error: strategy 'locked' requires the 'lock-file' input"
+            exit 1
+          fi
+          if [[ ! -f "$LOCK_FILE" ]]; then
+            echo "Error: lock file not found: $LOCK_FILE"
+            exit 1
+          fi
+
+          # Make sure submodule repositories are initialised before pinning.
+          git submodule update --init --recursive || {
+            echo "Error: Failed to initialize submodules"
+            exit 1
+          }
+
+          pinned=0
+          while IFS=$'\t' read -r sub_path sub_sha || [[ -n "${sub_path:-}" ]]; do
+            # Skip blank lines and comments
+            [[ -z "${sub_path:-}" ]] && continue
+            [[ "$sub_path" == \#* ]] && continue
+            if [[ -z "${sub_sha:-}" ]]; then
+              echo "Error: malformed lock entry for '$sub_path' (missing SHA)"
+              exit 1
+            fi
+
+            echo "Pinning $sub_path -> $sub_sha"
+            if [[ ! -d "$sub_path" ]]; then
+              echo "Error: submodule path '$sub_path' from lock not found in working tree"
+              exit 1
+            fi
+
+            # Fetch the exact commit; fall back to a full fetch if the server does
+            # not allow fetching an arbitrary SHA directly.
+            if ! git -C "$sub_path" fetch origin "$sub_sha" 2>/dev/null; then
+              echo "Direct SHA fetch failed for $sub_path; fetching origin refs..."
+              git -C "$sub_path" fetch origin || {
+                echo "Error: failed to fetch origin for $sub_path; check network/authentication"
+                exit 1
+              }
+              if ! git -C "$sub_path" cat-file -e "$sub_sha^{commit}" 2>/dev/null; then
+                echo "Error: locked SHA $sub_sha for $sub_path is not available after fetching origin"
+                echo "The tested commit may have been force-pushed/pruned; re-run build to generate a fresh lock."
+                exit 1
+              fi
+            fi
+
+            git -C "$sub_path" checkout --detach "$sub_sha" || {
+              echo "Error: failed to checkout $sub_sha for $sub_path"
+              exit 1
+            }
+
+            actual_sha=$(git -C "$sub_path" rev-parse HEAD)
+            if [[ "$actual_sha" != "$sub_sha" ]]; then
+              echo "Error: $sub_path resolved to $actual_sha but lock expected $sub_sha"
+              exit 1
+            fi
+            echo "  - $sub_path: $actual_sha (verified)"
+            pinned=$((pinned + 1))
+          done < "$LOCK_FILE"
+
+          echo "Pinned $pinned submodule(s) from lock file"
+        elif [[ "$STRATEGY" == "init" ]]; then
           echo "Checking out pinned revisions from parent repo..."
 
           git submodule update --init --recursive || {
@@ -209,5 +289,51 @@ runs:
             echo "  - $displaypath: $commit_hash ($commit_msg)"
           '
         fi
-        
+
+        # Persist the resolved SHAs to a lock file so a later job (e.g. deploy) can
+        # pin the submodules to the exact same revisions that were just resolved.
+        if [[ -n "$LOCK_FILE" && "$STRATEGY" != "locked" ]]; then
+          echo "Writing submodule SHA lock to: $LOCK_FILE"
+          : > "$LOCK_FILE"
+          git submodule --quiet foreach --recursive \
+            'sub_sha=$(git rev-parse HEAD) || {
+               echo "Error: failed to resolve HEAD for $displaypath" >&2
+               exit 1
+             }
+             if [[ -z "$displaypath" || -z "$sub_sha" ]]; then
+               echo "Error: malformed submodule lock entry for $displaypath" >&2
+               exit 1
+             fi
+             printf "%s\t%s\n" "$displaypath" "$sub_sha"' >> "$LOCK_FILE" || {
+            echo "Error: failed to write submodule SHA lock"
+            exit 1
+          }
+
+          expected_entries=$(git submodule --quiet foreach --recursive 'printf "%s\n" "$displaypath"' | wc -l | tr -d ' ')
+          actual_entries=0
+          while IFS=$'\t' read -r sub_path sub_sha extra || [[ -n "${sub_path:-}" ]]; do
+            if [[ -z "${sub_path:-}" || -z "${sub_sha:-}" || -n "${extra:-}" ]]; then
+              echo "Error: malformed lock entry: $sub_path"
+              exit 1
+            fi
+            if [[ ! -d "$sub_path" ]]; then
+              echo "Error: lock entry path '$sub_path' not found in working tree"
+              exit 1
+            fi
+            if ! git -C "$sub_path" cat-file -e "$sub_sha^{commit}" 2>/dev/null; then
+              echo "Error: lock SHA for $sub_path is not a local commit: $sub_sha"
+              exit 1
+            fi
+            actual_entries=$((actual_entries + 1))
+          done < "$LOCK_FILE"
+
+          if [[ "$actual_entries" -ne "$expected_entries" ]]; then
+            echo "Error: lock contains $actual_entries entries but $expected_entries submodule(s) were found"
+            exit 1
+          fi
+
+          echo "Submodule lock contents:"
+          cat "$LOCK_FILE"
+        fi
+
         echo "Submodules updated successfully"
