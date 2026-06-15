@@ -124,6 +124,13 @@ jobs:
           github-app-id: ${{ inputs.github-app-id }}
           github-app-private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
 
+      - name: Validate build submodule strategy
+        if: ${{ inputs.update-submodules && inputs.submodule-strategy != 'commit' && inputs.submodule-strategy != 'tag' }}
+        run: |
+          echo "Error: build submodule-strategy must be 'commit' or 'tag' when update-submodules is enabled"
+          echo "Deploy uses the build-generated lock, so 'init' and 'locked' are not valid build strategies here."
+          exit 1
+
       - name: Update submodules
         if: ${{ inputs.update-submodules }}
         uses: taxdown/.github/.github/actions/update-submodules@main

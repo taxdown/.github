@@ -191,11 +191,18 @@ runs:
 
             # Fetch the exact commit; fall back to a full fetch if the server does
             # not allow fetching an arbitrary SHA directly.
-            git -C "$sub_path" fetch origin "$sub_sha" 2>/dev/null \
-              || git -C "$sub_path" fetch origin || {
-                echo "Error: failed to fetch $sub_sha for $sub_path"
+            if ! git -C "$sub_path" fetch origin "$sub_sha" 2>/dev/null; then
+              echo "Direct SHA fetch failed for $sub_path; fetching origin refs..."
+              git -C "$sub_path" fetch origin || {
+                echo "Error: failed to fetch origin for $sub_path; check network/authentication"
                 exit 1
               }
+              if ! git -C "$sub_path" cat-file -e "$sub_sha^{commit}" 2>/dev/null; then
+                echo "Error: locked SHA $sub_sha for $sub_path is not available after fetching origin"
+                echo "The tested commit may have been force-pushed/pruned; re-run build to generate a fresh lock."
+                exit 1
+              fi
+            fi
 
             git -C "$sub_path" checkout --detach "$sub_sha" || {
               echo "Error: failed to checkout $sub_sha for $sub_path"
@@ -289,7 +296,42 @@ runs:
           echo "Writing submodule SHA lock to: $LOCK_FILE"
           : > "$LOCK_FILE"
           git submodule --quiet foreach --recursive \
-            'printf "%s\t%s\n" "$displaypath" "$(git rev-parse HEAD)"' >> "$LOCK_FILE"
+            'sub_sha=$(git rev-parse HEAD) || {
+               echo "Error: failed to resolve HEAD for $displaypath" >&2
+               exit 1
+             }
+             if [[ -z "$displaypath" || -z "$sub_sha" ]]; then
+               echo "Error: malformed submodule lock entry for $displaypath" >&2
+               exit 1
+             fi
+             printf "%s\t%s\n" "$displaypath" "$sub_sha"' >> "$LOCK_FILE" || {
+            echo "Error: failed to write submodule SHA lock"
+            exit 1
+          }
+
+          expected_entries=$(git submodule --quiet foreach --recursive 'printf "%s\n" "$displaypath"' | wc -l | tr -d ' ')
+          actual_entries=0
+          while IFS=$'\t' read -r sub_path sub_sha extra || [[ -n "${sub_path:-}" ]]; do
+            if [[ -z "${sub_path:-}" || -z "${sub_sha:-}" || -n "${extra:-}" ]]; then
+              echo "Error: malformed lock entry: $sub_path"
+              exit 1
+            fi
+            if [[ ! -d "$sub_path" ]]; then
+              echo "Error: lock entry path '$sub_path' not found in working tree"
+              exit 1
+            fi
+            if ! git -C "$sub_path" cat-file -e "$sub_sha^{commit}" 2>/dev/null; then
+              echo "Error: lock SHA for $sub_path is not a local commit: $sub_sha"
+              exit 1
+            fi
+            actual_entries=$((actual_entries + 1))
+          done < "$LOCK_FILE"
+
+          if [[ "$actual_entries" -ne "$expected_entries" ]]; then
+            echo "Error: lock contains $actual_entries entries but $expected_entries submodule(s) were found"
+            exit 1
+          fi
+
           echo "Submodule lock contents:"
           cat "$LOCK_FILE"
         fi
