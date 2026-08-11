@@ -22,6 +22,11 @@ on:
         required: false
         default: ''
         type: string
+      TARGET_BRANCH:
+        description: 'Branch to open release PRs against and tag releases on (e.g. "release/v2" for a maintenance line). If empty, the repository default branch is used.'
+        required: false
+        default: ''
+        type: string
     secrets:
       GITHUB_APP_PRIVATE_KEY:
         description: 'The private key of the GitHub App to authenticate as when using release-please'
@@ -43,6 +48,7 @@ jobs:
       - uses: googleapis/release-please-action@v4
         id: release
         with:
+          target-branch: ${{ inputs.TARGET_BRANCH }}
           include-component-in-tag: ${{ inputs.MONOREPO_TAGS_ENABLED }}
           token: ${{ steps.app-token.outputs.token }}
 
