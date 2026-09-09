@@ -33,6 +33,8 @@ on:
     secrets:
       AWS_DEPLOYMENT_ROLE:
         required: true
+      SENTRY_AUTH_TOKEN:
+        required: false
 jobs:
   prepare:
     runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
