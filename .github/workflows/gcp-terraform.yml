@@ -1,0 +1,323 @@
+name: Terraform GCP 🌍
+
+# Applies a repository's GCP Terraform. Reusable by any repository in the
+# organisation.
+#
+# What the caller has to provide:
+#   <terraform-dir>          the configuration, with its tests
+#   a GitHub Environment     named <stage>-<country>, per deployment, holding
+#                            GCP_PROJECT, GCP_WIF_PROVIDER and
+#                            GCP_DEPLOY_SERVICE_ACCOUNT as *variables*
+#
+# Those three are resource identifiers, not credentials -- the bootstrap script
+# of each repository prints them on screen -- so they are variables, not
+# secrets. Nothing in this workflow is a key: `plan` and `apply` authenticate by
+# Workload Identity Federation.
+#
+# The configuration is expected to take three variables: `gcp_project`, `env`
+# and `country`. That is the data platform's shape: one GCP project per country
+# and stage, named data-<country>-<stage>.
+#
+# The backend is a convention, not an input:
+#   bucket  <service>-<country>-<stage>-tfstate-<gcp_project>
+#   prefix  <service>/<stage>/<country>
+#
+# A bucket per deployment is what lets the deployments apply in parallel:
+# sharing one terraform.tfstate between concurrent applies is a race, and the
+# last one to finish overwrites what the other wrote.
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: |
+          Service name. It prefixes the state bucket and the state prefix, so it
+          must match the one the repository's bootstrap used. Pass it already
+          normalised: the-continent bootstraps as "continent".
+        required: true
+        type: string
+      countries:
+        description: 'JSON array of countries to deploy, e.g. ''["es", "mx"]''.'
+        required: true
+        type: string
+      terraform-dir:
+        description: 'Path to the Terraform configuration.'
+        required: false
+        type: string
+        default: 'infrastructure/gcp'
+      terraform-version:
+        description: |
+          Terraform CLI version. Left empty, it is read from
+          `terraform-version-file`, which keeps CI and the local binary on the
+          same pin.
+        required: false
+        type: string
+        default: ''
+      terraform-version-file:
+        description: 'File holding the pinned Terraform version.'
+        required: false
+        type: string
+        default: '.terraform-version'
+      stages:
+        description: |
+          JSON array of stages applied from the default branch. A repository
+          whose staging deployment is not bootstrapped yet passes '["dev"]',
+          otherwise every apply job fails on its first merge.
+        required: false
+        type: string
+        default: '["dev", "staging"]'
+      prod-tag-prefix:
+        description: |
+          Tags starting with this apply the prod stage, e.g. "gaunter-v". Empty
+          disables it, and prod is then reachable only by manual dispatch.
+        required: false
+        type: string
+        default: ''
+      runs-on:
+        description: 'Runner label.'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      credentials-ready:
+        description: |
+          False leaves only the `check` job -- format, validate and tests, which
+          need no credentials at all.
+
+          For a repository whose bootstrap is not done and whose Environment
+          variables are still empty. Without them, `plan` and `apply` do not
+          fail informatively: they fail authenticating, before reaching
+          Terraform, and leave the pipeline red for something that is not the
+          code.
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  prepare:
+    name: Resolve stages
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      contents: read
+    outputs:
+      stages: ${{ steps.set.outputs.stages }}
+      should_apply: ${{ steps.set.outputs.should_apply }}
+      terraform_version: ${{ steps.version.outputs.terraform_version }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # The pinned version lives in one file, shared with the local binary. The
+      # configuration's own `required_version` is the guardrail: if the two
+      # disagree, terraform fails at once instead of running with a version
+      # nobody expected.
+      - name: Resolve the Terraform version
+        id: version
+        env:
+          VERSION: ${{ inputs.terraform-version }}
+          VERSION_FILE: ${{ inputs.terraform-version-file }}
+        run: |
+          if [[ -z "$VERSION" ]]; then
+            if [[ ! -f "$VERSION_FILE" ]]; then
+              echo "::error::no terraform-version input and no $VERSION_FILE in the repository"
+              exit 1
+            fi
+            VERSION="$(tr -d '[:space:]' < "$VERSION_FILE")"
+          fi
+          echo "📌 Terraform $VERSION"
+          echo "terraform_version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # main applies the stages the caller declared, a prod tag applies prod, a
+      # manual dispatch applies dev, and any other branch stops at plan.
+      - name: Resolve the stages
+        id: set
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          STAGES_ON_MAIN: ${{ inputs.stages }}
+          PROD_TAG_PREFIX: ${{ inputs.prod-tag-prefix }}
+        run: |
+          if [[ "$GITHUB_REF" == "refs/heads/${DEFAULT_BRANCH}" ]]; then
+            STAGES="$STAGES_ON_MAIN"
+            SHOULD_APPLY="true"
+            echo "📋 Default branch: stages $STAGES"
+          elif [[ -n "$PROD_TAG_PREFIX" && "$GITHUB_REF" == "refs/tags/${PROD_TAG_PREFIX}"* ]]; then
+            STAGES='["prod"]'
+            SHOULD_APPLY="true"
+            echo "📋 Production tag: stage prod"
+          elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            STAGES='["dev"]'
+            SHOULD_APPLY="true"
+            echo "📋 Manual dispatch: stage dev"
+          else
+            STAGES='["dev"]'
+            SHOULD_APPLY="false"
+            echo "📋 Feature branch: plan only, against dev"
+          fi
+
+          # jq -c collapses the value to one line -- a multi-line one would
+          # break the output file -- and rejects malformed JSON here, where the
+          # error names the input, instead of when the matrix fails to expand.
+          echo "stages=$(jq -c . <<< "$STAGES")" >> "$GITHUB_OUTPUT"
+          echo "should_apply=$SHOULD_APPLY" >> "$GITHUB_OUTPUT"
+
+  # No credentials of any cloud: the tests use mocked providers. Runs on any
+  # branch without exposing anything.
+  check:
+    name: Format, validate & test 🔍
+    needs: [prepare]
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.terraform-dir }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ needs.prepare.outputs.terraform_version }}
+          terraform_wrapper: false
+
+      # Its own data directory, so it cannot inherit a remote backend from an
+      # earlier init and has no way to touch the state.
+      - name: Initialise without backend
+        run: terraform init -backend=false -input=false
+        env:
+          TF_DATA_DIR: .terraform-check
+
+      - name: Format and validate
+        run: |
+          terraform fmt -check -recursive
+          terraform validate
+        env:
+          TF_DATA_DIR: .terraform-check
+
+      - name: Run tests
+        run: terraform test
+        env:
+          TF_DATA_DIR: .terraform-check
+
+  plan:
+    name: Plan 📋
+    needs: [prepare, check]
+    if: inputs.credentials-ready && needs.prepare.outputs.should_apply == 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: ${{ fromJson(needs.prepare.outputs.stages) }}
+        country: ${{ fromJson(inputs.countries) }}
+    runs-on: ${{ inputs.runs-on }}
+    environment:
+      name: ${{ matrix.stage }}-${{ matrix.country }}
+    # A plan takes the state lock as well, so two feature branches planning
+    # against the same deployment collide. Cancelled, not queued: a superseded
+    # plan is of no interest to anyone.
+    concurrency:
+      group: gcp-terraform-plan-${{ inputs.service }}-${{ matrix.stage }}-${{ matrix.country }}
+      cancel-in-progress: true
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.terraform-dir }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ needs.prepare.outputs.terraform_version }}
+          terraform_wrapper: false
+
+      - name: Initialise the backend
+        run: |
+          terraform init -input=false -reconfigure \
+            -backend-config="bucket=${SERVICE}-${COUNTRY}-${STAGE}-tfstate-${TF_VAR_gcp_project}" \
+            -backend-config="prefix=${SERVICE}/${STAGE}/${COUNTRY}"
+        env:
+          SERVICE: ${{ inputs.service }}
+          STAGE: ${{ matrix.stage }}
+          COUNTRY: ${{ matrix.country }}
+          TF_VAR_gcp_project: ${{ vars.GCP_PROJECT }}
+
+      - name: Plan infrastructure
+        run: terraform plan -input=false
+        env:
+          TF_VAR_gcp_project: ${{ vars.GCP_PROJECT }}
+          TF_VAR_env: ${{ matrix.stage }}
+          TF_VAR_country: ${{ matrix.country }}
+
+  apply:
+    name: Apply 🚀
+    needs: [prepare, check]
+    if: inputs.credentials-ready && needs.prepare.outputs.should_apply == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: ${{ fromJson(needs.prepare.outputs.stages) }}
+        country: ${{ fromJson(inputs.countries) }}
+    runs-on: ${{ inputs.runs-on }}
+    environment:
+      name: ${{ matrix.stage }}-${{ matrix.country }}
+    # One state, one apply at a time. Queued, never cancelled: cancelling an
+    # apply mid-flight is how a state lock outlives the run that took it.
+    concurrency:
+      group: gcp-terraform-${{ inputs.service }}-${{ matrix.stage }}-${{ matrix.country }}
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.terraform-dir }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ needs.prepare.outputs.terraform_version }}
+          terraform_wrapper: false
+
+      - name: Initialise the backend
+        run: |
+          terraform init -input=false -reconfigure \
+            -backend-config="bucket=${SERVICE}-${COUNTRY}-${STAGE}-tfstate-${TF_VAR_gcp_project}" \
+            -backend-config="prefix=${SERVICE}/${STAGE}/${COUNTRY}"
+        env:
+          SERVICE: ${{ inputs.service }}
+          STAGE: ${{ matrix.stage }}
+          COUNTRY: ${{ matrix.country }}
+          TF_VAR_gcp_project: ${{ vars.GCP_PROJECT }}
+
+      - name: Apply infrastructure
+        run: terraform apply -input=false -auto-approve
+        env:
+          TF_VAR_gcp_project: ${{ vars.GCP_PROJECT }}
+          TF_VAR_env: ${{ matrix.stage }}
+          TF_VAR_country: ${{ matrix.country }}
