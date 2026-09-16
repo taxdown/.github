@@ -1,0 +1,226 @@
+name: Terraform GCP 🌍
+
+# Reutilizable por cualquier repositorio que despliegue en GCP.
+#
+# Lo que el repositorio que llama tiene que aportar, en el package.json de
+# `<service>`:
+#
+#   gcp:lint     formato y validacion, sin credenciales
+#   gcp:test     los tests del modulo, sin credenciales
+#   gcp:plan     plan contra el proyecto del deployment
+#   gcp:apply    apply, sin confirmacion interactiva
+#
+# Como los implemente cada servicio es cosa suya. Hoy todos delegan en el mismo
+# `scripts/gcp-terraform.sh`, que es tambien el entrypoint de local, pero este
+# workflow no sabe que existe: solo llama a npm. Un servicio puede cambiarlo sin
+# tocar esto.
+#
+# Y el llamador pasa `terraform-version`. El `required_version` de la
+# configuracion es el guardarrail: si no casan, terraform falla al instante en
+# vez de correr con una version distinta a la esperada.
+#
+# Los scripts de npm son la entrada a todo en TaxDown -- los servicios tienen
+# package.json y exponen `test` y `lint` asi, tambien los que no son de Node.
+# Exigirlos aqui no anade carga y hace que un servicio nuevo siga la convencion
+# en vez de inventarse la suya.
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: 'Directory holding infrastructure/gcp (e.g. gaunter, shani, apollo)'
+        required: true
+        type: string
+      terraform-version:
+        description: 'Terraform CLI version to install'
+        required: true
+        type: string
+      deployments:
+        description: |
+          JSON array of deployment configurations, mirroring the AWS deploy
+          workflow. Each entry needs a "name"; the GitHub environment it runs
+          in is "<stage>-<name>", and that environment carries GCP_PROJECT and
+          AWS_ACCOUNT_ID. The WIF provider and the deploy service account come
+          in as secrets from the caller.
+
+          `env.COUNTRY` elige el pais. Cada pais tiene su propio proyecto de
+          GCP (`data-<pais>-<entorno>`) y, por tanto, su propio bucket de
+          estado: es lo que permite que los deployments apliquen en paralelo
+          sin pelearse por un unico terraform.tfstate.
+
+          Por pais, con la convencion de TaxDown (ver vesemir-v2):
+            '[{"name":"🇪🇸 ES","env":{"COUNTRY":"es"}},
+              {"name":"🇲🇽 MX","env":{"COUNTRY":"mx"}}]'
+        required: false
+        type: string
+        default: '[{"name": "default"}]'
+      architecture:
+        description: 'CPU architecture: x64 or arm64'
+        required: false
+        type: string
+        default: 'arm64'
+    secrets:
+      GCP_WIF_PROVIDER:
+        required: true
+      GCP_DEPLOY_SERVICE_ACCOUNT:
+        required: true
+
+jobs:
+  # Misma inferencia que el reutilizable de despliegue: main va a dev y staging,
+  # un tag del servicio va a prod, un disparo manual va a dev, y cualquier otra
+  # rama se queda en plan.
+  prepare:
+    name: Resolve stages
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    outputs:
+      stages: ${{ steps.set.outputs.stages }}
+      deployments: ${{ steps.set.outputs.deployments }}
+      should_apply: ${{ steps.set.outputs.should_apply }}
+    steps:
+      - id: set
+        run: |
+          if [[ "$GITHUB_REF" == "refs/heads/${{ github.event.repository.default_branch }}" ]] ; then
+            STAGES='["dev", "staging"]'
+            SHOULD_APPLY="true"
+            echo "📋 Main branch: stages dev and staging"
+          elif [[ "$GITHUB_REF" == "refs/tags/${{ inputs.service }}-v"* ]] ; then
+            STAGES='["prod"]'
+            SHOULD_APPLY="true"
+            echo "📋 Production tag: stage prod"
+          elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            STAGES='["dev"]'
+            SHOULD_APPLY="true"
+            echo "📋 Manual dispatch: stage dev"
+          else
+            STAGES='["staging"]'
+            SHOULD_APPLY="false"
+            echo "📋 Feature branch: stage staging (plan only)"
+          fi
+
+
+
+          DEPLOYMENTS='${{ inputs.deployments }}'
+          echo "📋 Using deployments configuration: $DEPLOYMENTS"
+
+          echo "stages=$STAGES" >> "$GITHUB_OUTPUT"
+          echo "deployments=$DEPLOYMENTS" >> "$GITHUB_OUTPUT"
+          echo "should_apply=$SHOULD_APPLY" >> "$GITHUB_OUTPUT"
+
+  # Sin credenciales de ninguna nube: los tests usan mock_provider. Corre en
+  # cualquier rama sin exponer nada.
+  check:
+    name: Format, validate & test 🔍
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.service }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: Format and validate
+        run: npm run gcp:lint
+
+      - name: Run tests
+        run: npm run gcp:test
+
+  plan:
+    name: Plan 📋
+    needs: [prepare, check]
+    if: needs.prepare.outputs.should_apply == 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: ${{ fromJson(needs.prepare.outputs.stages) }}
+        deployment: ${{ fromJson(needs.prepare.outputs.deployments) }}
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    environment:
+      name: ${{ matrix.stage }}-${{ matrix.deployment.name }}
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.service }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      # El mismo comando que se usa en local. La credencial llega por
+      # GOOGLE_APPLICATION_CREDENTIALS, que exporta la accion anterior.
+      # El stage y el pais van por entorno, que es como los lee el servicio; los
+      # valores del proyecto salen del GitHub Environment.
+      - name: Plan infrastructure
+        run: npm run gcp:plan
+        env:
+          STAGE: ${{ matrix.stage }}
+          COUNTRY: ${{ matrix.deployment.env.COUNTRY }}
+          TF_VAR_gcp_project: ${{ vars.GCP_PROJECT }}
+          TF_VAR_aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
+
+  apply:
+    name: Apply 🚀
+    needs: [prepare, check]
+    if: needs.prepare.outputs.should_apply == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: ${{ fromJson(needs.prepare.outputs.stages) }}
+        deployment: ${{ fromJson(needs.prepare.outputs.deployments) }}
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    environment:
+      name: ${{ matrix.stage }}-${{ matrix.deployment.name }}
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.service }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: Apply infrastructure
+        run: npm run gcp:apply
+        env:
+          STAGE: ${{ matrix.stage }}
+          COUNTRY: ${{ matrix.deployment.env.COUNTRY }}
+          TF_VAR_gcp_project: ${{ vars.GCP_PROJECT }}
+          TF_VAR_aws_account_id: ${{ vars.AWS_ACCOUNT_ID }}
