@@ -47,17 +47,11 @@ on:
         default: 'infrastructure/gcp'
       terraform-version:
         description: |
-          Terraform CLI version. Left empty, it is read from
-          `terraform-version-file`, which keeps CI and the local binary on the
-          same pin.
-        required: false
+          Terraform CLI version. The configuration's own `required_version` is
+          the guardrail: if the two disagree, terraform fails at once instead of
+          running with a version nobody expected.
+        required: true
         type: string
-        default: ''
-      terraform-version-file:
-        description: 'File holding the pinned Terraform version.'
-        required: false
-        type: string
-        default: '.terraform-version'
       stages:
         description: |
           JSON array of stages applied from the default branch. A repository
@@ -96,38 +90,11 @@ jobs:
   prepare:
     name: Resolve stages
     runs-on: ${{ inputs.runs-on }}
-    permissions:
-      contents: read
+    permissions: {}
     outputs:
       stages: ${{ steps.set.outputs.stages }}
       should_apply: ${{ steps.set.outputs.should_apply }}
-      terraform_version: ${{ steps.version.outputs.terraform_version }}
     steps:
-      - name: Check out source code
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      # The pinned version lives in one file, shared with the local binary. The
-      # configuration's own `required_version` is the guardrail: if the two
-      # disagree, terraform fails at once instead of running with a version
-      # nobody expected.
-      - name: Resolve the Terraform version
-        id: version
-        env:
-          VERSION: ${{ inputs.terraform-version }}
-          VERSION_FILE: ${{ inputs.terraform-version-file }}
-        run: |
-          if [[ -z "$VERSION" ]]; then
-            if [[ ! -f "$VERSION_FILE" ]]; then
-              echo "::error::no terraform-version input and no $VERSION_FILE in the repository"
-              exit 1
-            fi
-            VERSION="$(tr -d '[:space:]' < "$VERSION_FILE")"
-          fi
-          echo "📌 Terraform $VERSION"
-          echo "terraform_version=$VERSION" >> "$GITHUB_OUTPUT"
-
       # main applies the stages the caller declared, a prod tag applies prod, a
       # manual dispatch applies dev, and any other branch stops at plan.
       - name: Resolve the stages
@@ -165,7 +132,6 @@ jobs:
   # branch without exposing anything.
   check:
     name: Format, validate & test 🔍
-    needs: [prepare]
     runs-on: ${{ inputs.runs-on }}
     permissions:
       contents: read
@@ -181,7 +147,7 @@ jobs:
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: ${{ needs.prepare.outputs.terraform_version }}
+          terraform_version: ${{ inputs.terraform-version }}
           terraform_wrapper: false
 
       # Its own data directory, so it cannot inherit a remote backend from an
@@ -242,7 +208,7 @@ jobs:
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: ${{ needs.prepare.outputs.terraform_version }}
+          terraform_version: ${{ inputs.terraform-version }}
           terraform_wrapper: false
 
       - name: Initialise the backend
@@ -301,7 +267,7 @@ jobs:
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: ${{ needs.prepare.outputs.terraform_version }}
+          terraform_version: ${{ inputs.terraform-version }}
           terraform_wrapper: false
 
       - name: Initialise the backend

@@ -23,8 +23,14 @@ jobs:
     with:
       service: cintra
       countries: '["es", "mx"]'
+      terraform-version: '1.14.3'
       stages: '["dev"]'
 ```
+
+The Terraform version is an input, not a file the workflow goes looking for.
+The configuration's own `required_version` is the guardrail: if the two
+disagree, terraform fails at once instead of running with a version nobody
+expected.
 
 ### What the caller provides
 
